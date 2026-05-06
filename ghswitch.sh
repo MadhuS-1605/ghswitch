@@ -10,11 +10,14 @@
 # ── Colors ───────────────────────────────────────────────────
 _init_colors() {
   if [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
-    BOLD='\033[1m';  DIM='\033[2m';    RESET='\033[0m'
-    GREEN='\033[38;5;82m'; CYAN='\033[38;5;117m'
-    YELLOW='\033[38;5;220m'; RED='\033[38;5;203m'
-    MAGENTA='\033[38;5;183m'; WHITE='\033[97m'
-    BG_SEL='\033[48;5;235m'
+    # Real ESC chars (ANSI-C quoting) so colors work in printf format
+    # strings AND inside %s arguments. Plain '\033...' would only be
+    # interpreted in the format string, not in arguments.
+    BOLD=$'\033[1m';  DIM=$'\033[2m';    RESET=$'\033[0m'
+    GREEN=$'\033[38;5;82m'; CYAN=$'\033[38;5;117m'
+    YELLOW=$'\033[38;5;220m'; RED=$'\033[38;5;203m'
+    MAGENTA=$'\033[38;5;183m'; WHITE=$'\033[97m'
+    BG_SEL=$'\033[48;5;235m'
   else
     BOLD=''; DIM=''; RESET=''; GREEN=''; CYAN=''
     YELLOW=''; RED=''; MAGENTA=''; WHITE=''; BG_SEL=''
@@ -212,6 +215,17 @@ apply_profile() {
     if $HAS_GH; then
       if printf "%s" "$gh_token" | gh auth login --with-token --hostname "$gh_host" >/dev/null 2>&1; then
         ok "gh token  = authenticated for $gh_host"
+        # `gh auth login --with-token` adds/refreshes the token but doesn't
+        # change the *active* account when multiple are logged in for one
+        # host. Flip active so subsequent gh commands use this profile.
+        # Silently no-ops on gh < 2.40 (no `auth switch` subcommand).
+        if [ -n "$name" ]; then
+          if gh auth switch --hostname "$gh_host" --user "$name" >/dev/null 2>&1; then
+            ok "gh active = $name"
+          else
+            warn "gh active = '$name' not switched (need gh ≥ 2.40 + matching user)"
+          fi
+        fi
       else
         warn "gh token  = failed to authenticate gh CLI"
       fi
@@ -219,7 +233,10 @@ apply_profile() {
       info "gh CLI missing, token applied only to git HTTPS"
     fi
   elif $HAS_GH; then
-    if gh auth status --hostname "$gh_host" >/dev/null 2>&1; then
+    # If name is set, try to switch gh CLI active account
+    if [ -n "$name" ] && gh auth switch --hostname "$gh_host" --user "$name" >/dev/null 2>&1; then
+      ok "gh CLI    = switched to account $name"
+    elif gh auth status --hostname "$gh_host" >/dev/null 2>&1; then
       ok "gh CLI    = authenticated on $gh_host"
     else
       warn "gh CLI not authed for $gh_host — run: gh auth login --hostname $gh_host"
@@ -324,6 +341,19 @@ show_status() {
   printf "  ${DIM}GPG Key  :${RESET} %s\n" "$ggpg"
   printf "  ${DIM}SSH Cmd  :${RESET} ${DIM}%s${RESET}\n" "$gssh"
   [ -n "$active" ] && printf "  ${DIM}ghswitch :${RESET} ${GREEN}${BOLD}%s${RESET} (active)\n" "$active"
+
+  if in_repo; then
+    local lname lemail lssh
+    lname=$(git config --local user.name 2>/dev/null)
+    lemail=$(git config --local user.email 2>/dev/null)
+    lssh=$(git config --local core.sshCommand 2>/dev/null)
+    if [ -n "$lname" ] || [ -n "$lemail" ] || [ -n "$lssh" ]; then
+      section "Local git identity (repo override)"
+      [ -n "$lname" ] && printf "  ${DIM}Name     :${RESET} ${BOLD}%s${RESET}\n" "$lname"
+      [ -n "$lemail" ] && printf "  ${DIM}Email    :${RESET} ${BOLD}%s${RESET}\n" "$lemail"
+      [ -n "$lssh" ]   && printf "  ${DIM}SSH Cmd  :${RESET} ${DIM}%s${RESET}\n" "$lssh"
+    fi
+  fi
 
   if $HAS_GH; then
     section "gh CLI status"
@@ -455,6 +485,23 @@ unset_global() {
       
       printf '' > "${ACTIVE_FILE}"
       ok "Global identity cleared."
+      ;;
+    *) info "Cancelled." ;;
+  esac
+}
+
+# ── Unset local identity ──────────────────────────────────────
+unset_local() {
+  local confirm
+  require_repo || return 1
+  section "Clear local git identity (repo override)"
+  ask "Remove local user.name, email, and SSH command? (y/N):"; read -r confirm
+  case "$confirm" in
+    [Yy])
+      git config --local --unset user.name       2>/dev/null && ok "Cleared local user.name"       || true
+      git config --local --unset user.email      2>/dev/null && ok "Cleared local user.email"      || true
+      git config --local --unset core.sshCommand 2>/dev/null && ok "Cleared local core.sshCommand" || true
+      ok "Local identity cleared. Global settings will now apply."
       ;;
     *) info "Cancelled." ;;
   esac
@@ -2582,7 +2629,7 @@ usage() {
     "list | ls"     "Show all profiles" \
     "local"         "Apply profile to current repo only" \
     "status"        "Show current git identity + gh auth" \
-    "unset"         "Clear global git identity" \
+    "unset [local]" "Clear global (or local) git identity" \
     "edit"          "Open profiles.conf in \$EDITOR" \
     "delete | rm"   "Remove a profile" \
     "<name>"        "Switch directly, e.g. ghswitch work"
@@ -2693,7 +2740,13 @@ main() {
     list|ls)         list_profiles      ;;
     local)           apply_local        ;;
     status|whoami)   show_status        ;;
-    unset|reset)     unset_global       ;;
+    unset|reset)
+      if [ "$2" = "--local" ] || [ "$2" = "local" ]; then
+        unset_local
+      else
+        unset_global
+      fi
+      ;;
     edit)            edit_config        ;;
     delete|rm)       delete_profile     ;;
 
