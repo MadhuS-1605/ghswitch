@@ -49,7 +49,7 @@ command -v ssh-agent >/dev/null 2>&1 && HAS_AGENT=true
 header() {
   printf '\n'
   printf "${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}\n"
-  printf "${BOLD}${CYAN}║${RESET}  ${WHITE}${BOLD}◉ ghswitch${RESET}  ${DIM}GitHub Account Switcher${RESET}   ${BOLD}${CYAN}║${RESET}\n"
+  printf "${BOLD}${CYAN}║${RESET}  ${WHITE}${BOLD}◉ ghswitch${RESET}  ${DIM}GitHub Account Switcher${RESET}     ${BOLD}${CYAN}║${RESET}\n"
   printf "${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}\n\n"
 }
 section() { printf "\n${BOLD}${MAGENTA}▸ %s${RESET}\n" "$1"; }
@@ -1737,7 +1737,7 @@ ISEOF
 
     printf '\033[2J\033[H'
     printf "${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}\n"
-    printf "${BOLD}${CYAN}║${RESET}  ${WHITE}${BOLD}◉ ghswitch status${RESET}  ${DIM}interactive       ${RESET}${BOLD}${CYAN}║${RESET}\n"
+    printf "${BOLD}${CYAN}║${RESET}  ${WHITE}${BOLD}◉ ghswitch status${RESET}  ${DIM}interactive          ${RESET}${BOLD}${CYAN}║${RESET}\n"
     printf "${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}\n"
     printf "  ${DIM}↑↓/jk move · ${BOLD}s${RESET}${DIM} stage · ${BOLD}u${RESET}${DIM} unstage · ${BOLD}d${RESET}${DIM} diff · ${BOLD}x${RESET}${DIM} discard · ${BOLD}c${RESET}${DIM} commit · ${BOLD}q${RESET}${DIM} quit${RESET}\n\n"
 
