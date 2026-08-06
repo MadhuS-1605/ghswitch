@@ -33,7 +33,7 @@
     --paper-panel: #e1d8bd;
     --text: #23293a;
     --text-dim: #5b5648;
-    --burgundy: #7a1f30;
+    --burgundy: #b5501a;
     --gold: #8a6a1f;
     --gold-fill: #c9a227;
     --line: #c3b895;
@@ -47,7 +47,7 @@
       --paper-panel: #171c25;
       --text: #e9e2c9;
       --text-dim: #9b9478;
-      --burgundy: #d4788a;
+      --burgundy: #e2884d;
       --gold: #d9b452;
       --gold-fill: #d9b452;
       --line: #333a2f;
@@ -58,13 +58,13 @@
   }
   :root[data-theme="dark"] {
     --paper: #11151c; --paper-panel: #171c25; --text: #e9e2c9; --text-dim: #9b9478;
-    --burgundy: #d4788a; --gold: #d9b452; --gold-fill: #d9b452; --line: #333a2f; --seal: #e9e2c9;
+    --burgundy: #e2884d; --gold: #d9b452; --gold-fill: #d9b452; --line: #333a2f; --seal: #e9e2c9;
     --ok: #6fae6f;
     color-scheme: dark;
   }
   :root[data-theme="light"] {
     --paper: #ece5d0; --paper-panel: #e1d8bd; --text: #23293a; --text-dim: #5b5648;
-    --burgundy: #7a1f30; --gold: #8a6a1f; --gold-fill: #c9a227; --line: #c3b895; --seal: #23293a;
+    --burgundy: #b5501a; --gold: #8a6a1f; --gold-fill: #c9a227; --line: #c3b895; --seal: #23293a;
     --ok: #3f6b3f;
     color-scheme: light;
   }
@@ -128,12 +128,11 @@
     width: 1.6rem; height: 1.6rem; flex: none;
   }
   .brand-word {
-    font-family: ui-serif, Georgia, serif;
-    font-weight: 700;
-    font-size: 1rem;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-weight: 600;
+    font-size: 1.05rem;
   }
+  .brand-word .gh { color: var(--burgundy); }
   .navlinks { display: flex; gap: 1.85rem; align-items: center; }
   .navlinks a {
     text-decoration: none;
@@ -696,7 +695,7 @@
   <div class="wrap nav">
     <a class="brand" href="#top">
       <img class="seal" src="/logo.svg" width="24" height="24" alt="" aria-hidden="true" />
-      <span class="brand-word">ghswitch</span>
+      <span class="brand-word"><span class="gh">gh</span>switch</span>
     </a>
     <nav class="navlinks">
       <a href="#declaration">Declaration</a>
