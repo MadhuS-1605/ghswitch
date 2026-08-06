@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Profile mirrors one [name] section of profiles.conf.
@@ -34,6 +35,14 @@ func ConfigFile() string { return filepath.Join(Dir(), "profiles.conf") }
 // ActiveFile is the legacy global-active pointer, kept only as a fallback for
 // tools/checks that don't read the per-session env vars (see internal/session).
 func ActiveFile() string { return filepath.Join(Dir(), "active") }
+
+// PreviousFile tracks the global-active profile as it was before the most
+// recent switch, so `ghswitch back` can jump to it.
+func PreviousFile() string { return filepath.Join(Dir(), "previous") }
+
+// AuditFile is an append-only local log of switches (timestamp, profile,
+// cwd) — a record of what identity was active when, not a sync mechanism.
+func AuditFile() string { return filepath.Join(Dir(), "switch.log") }
 
 func EnsureDir() error {
 	return os.MkdirAll(Dir(), 0o755)
@@ -190,4 +199,35 @@ func SetActiveGlobal(name string) error {
 		return err
 	}
 	return os.WriteFile(ActiveFile(), []byte(name), 0o644)
+}
+
+// GetPreviousGlobal / SetPreviousGlobal back `ghswitch back`.
+func GetPreviousGlobal() string {
+	b, err := os.ReadFile(PreviousFile())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func SetPreviousGlobal(name string) error {
+	if err := EnsureDir(); err != nil {
+		return err
+	}
+	return os.WriteFile(PreviousFile(), []byte(name), 0o644)
+}
+
+// AppendAudit records one switch event. Best-effort: a failure here should
+// never block the switch itself.
+func AppendAudit(profile string) {
+	if err := EnsureDir(); err != nil {
+		return
+	}
+	cwd, _ := os.Getwd()
+	f, err := os.OpenFile(AuditFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s\t%s\t%s\n", time.Now().Format("2006-01-02T15:04:05Z07:00"), profile, cwd)
 }

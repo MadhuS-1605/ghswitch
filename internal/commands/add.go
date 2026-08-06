@@ -41,7 +41,7 @@ func newAddCmd() *cobra.Command {
 			ok("Profile %q saved.", name)
 
 			if confirm("Apply this profile now? (y/N):") {
-				applyGlobal(p)
+				applyGlobal(p, 0)
 			}
 			return nil
 		},

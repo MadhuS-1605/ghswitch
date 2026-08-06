@@ -22,6 +22,7 @@ var Keys = []string{
 	"GIT_COMMITTER_EMAIL",
 	"GIT_SSH_COMMAND",
 	"GHSWITCH_ACTIVE_PROFILE",
+	"GHSWITCH_EXPIRES",
 }
 
 // EnvFor builds the session env vars for a profile. Git reads

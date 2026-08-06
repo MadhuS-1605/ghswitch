@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MadhuS-1605/ghswitch/internal/config"
 	"github.com/MadhuS-1605/ghswitch/internal/gitutil"
@@ -20,7 +22,11 @@ func hasCmd(name string) bool {
 // `eval "$(ghswitch <profile>)"` to pick up (the real, per-shell switch),
 // and best-effort mirrors the same values into `git config --global` as a
 // fallback for tools that only read gitconfig, not env vars.
-func applyGlobal(p config.Profile) {
+//
+// ttl, if non-zero, is exported as GHSWITCH_EXPIRES — root.go warns (but
+// does not silently revert) once that time passes, since only the shell
+// that ran shellinit can actually change its own env.
+func applyGlobal(p config.Profile, ttl time.Duration) {
 	section("Applying profile: %s (session + global fallback)", p.Name)
 
 	if p.GitName != "" {
@@ -34,8 +40,19 @@ func applyGlobal(p config.Profile) {
 	applySSHAndGPG(p, "--global")
 	applyGH(p)
 
+	if previous := config.GetActiveGlobal(); previous != "" && previous != p.Name {
+		_ = config.SetPreviousGlobal(previous)
+	}
 	_ = config.SetActiveGlobal(p.Name)
-	session.WriteExports(os.Stdout, session.EnvFor(p))
+	config.AppendAudit(p.Name)
+
+	env := session.EnvFor(p)
+	if ttl > 0 {
+		expires := time.Now().Add(ttl).Unix()
+		env["GHSWITCH_EXPIRES"] = strconv.FormatInt(expires, 10)
+		ok("expires    = %s (%s)", time.Now().Add(ttl).Format("15:04"), ttl)
+	}
+	session.WriteExports(os.Stdout, env)
 	ok("Active profile → %s", p.Name)
 	info("Not session-isolated? Run: eval \"$(ghswitch shellinit)\" in your rc file, then re-run this switch.")
 }

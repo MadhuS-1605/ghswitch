@@ -62,6 +62,11 @@ curl -fsSL https://raw.githubusercontent.com/MadhuS-1605/ghswitch/main/scripts/i
 go install github.com/MadhuS-1605/ghswitch/cmd/ghswitch@latest
 ```
 
+**PowerShell (Windows)**
+```powershell
+irm https://raw.githubusercontent.com/MadhuS-1605/ghswitch/main/scripts/install.ps1 | iex
+```
+
 Then enable session isolation by adding this to your shell rc (`~/.zshrc`, `~/.bashrc`):
 ```bash
 eval "$(ghswitch shellinit)"
@@ -110,6 +115,10 @@ gitconfig, but the env vars are the source of truth.
 |---|---|
 | `ghswitch` | Interactive switcher (arrow keys + mouse) |
 | `ghswitch <name>` / `switch <name>` | Switch directly, session-scoped |
+| `ghswitch <name> --ttl 4h` | Switch with a time-to-live; warns (doesn't silently revert) once it passes |
+| `ghswitch back` | Switch back to whichever profile was active before the last switch |
+| `ghswitch audit [N]` | Show recent switches (timestamp, profile, cwd) — default last 20 |
+| `ghswitch completion <shell>` | Generate a shell-completion script (bash/zsh/fish/powershell) |
 | `ghswitch login [profile]` | Device-flow GitHub login, saves token to a profile |
 | `ghswitch add` | Add a profile (guided prompts) |
 | `ghswitch list` / `ls` | List all profiles with active marker |
@@ -252,6 +261,15 @@ chmod 644 ~/.ssh/id_ed25519_work.pub
 
 macOS, Linux, Windows — single static Go binary, no interpreter/runtime
 dependency beyond `git` itself.
+
+---
+
+## Claude Code skill
+
+A skill lives at [`claude-skill/ghswitch`](claude-skill/ghswitch) so Claude
+Code and other AI coding agents can drive `ghswitch` directly (check active
+identity, switch profiles, run `reauthor`/`doctor`) instead of hand-editing
+git config. Copy it into your `.claude/skills/` directory to enable it.
 
 ## License
 
