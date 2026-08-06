@@ -2,9 +2,12 @@ package commands
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/MadhuS-1605/ghswitch/internal/config"
 	"github.com/MadhuS-1605/ghswitch/internal/gitutil"
@@ -151,8 +154,8 @@ func newExportCmd() *cobra.Command {
 
 func newImportCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "import <file>",
-		Short: "Merge profiles from a shared file (skips existing names)",
+		Use:   "import <file-or-url>",
+		Short: "Merge profiles from a shared file or URL — team presets (skips existing names)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			imported, err := loadFrom(args[0])
@@ -178,11 +181,23 @@ func newImportCmd() *cobra.Command {
 	}
 }
 
-// loadFrom parses a profiles.conf-formatted file at an arbitrary path
+// loadFrom parses a profiles.conf-formatted file at an arbitrary path or URL
 // (config.Load only reads the default profiles.conf location, so this
-// temporarily points GHSWITCH_CONFIG_DIR at a staged copy).
+// temporarily points GHSWITCH_CONFIG_DIR at a staged copy). This is the
+// "team presets" flow — teams host a redacted profiles.conf (see `export`)
+// and members `import` it by URL instead of passing files around.
+//
+// ponytail: no signature/checksum verification on fetched config — anyone
+// with the URL can hand you profiles. Upgrade path: require an accompanying
+// .sig file + a trusted-signers list if this needs to be tamper-proof.
 func loadFrom(path string) ([]config.Profile, error) {
-	b, err := os.ReadFile(path)
+	var b []byte
+	var err error
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		b, err = fetchURL(path)
+	} else {
+		b, err = os.ReadFile(path)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +213,19 @@ func loadFrom(path string) ([]config.Profile, error) {
 	os.Setenv("GHSWITCH_CONFIG_DIR", stageDir)
 	defer os.Setenv("GHSWITCH_CONFIG_DIR", saved)
 	return config.Load()
+}
+
+func fetchURL(url string) ([]byte, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching %s: HTTP %d", url, resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 func newReposCmd() *cobra.Command {

@@ -27,6 +27,9 @@ func hasCmd(name string) bool {
 // does not silently revert) once that time passes, since only the shell
 // that ran shellinit can actually change its own env.
 func applyGlobal(p config.Profile, ttl time.Duration) {
+	if host := gitutil.RemoteHost(); host != "" {
+		p = p.ForHost(host)
+	}
 	section("Applying profile: %s (session + global fallback)", p.Name)
 
 	if p.GitName != "" {
@@ -62,6 +65,9 @@ func applyGlobal(p config.Profile, ttl time.Duration) {
 func applyLocal(p config.Profile) error {
 	if !gitutil.InRepo() {
 		return fmt.Errorf("not inside a git repository")
+	}
+	if host := gitutil.RemoteHost(); host != "" {
+		p = p.ForHost(host)
 	}
 	section("Applying profile: %s (local, this repo only)", p.Name)
 

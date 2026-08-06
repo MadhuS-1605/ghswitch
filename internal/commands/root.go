@@ -51,6 +51,7 @@ func Root(version string) *cobra.Command {
 		newAuditCmd(),
 		newGendocsCmd(),
 		newAddCmd(),
+		newAddHostCmd(),
 		newListCmd(),
 		newDeleteCmd(),
 		newLocalCmd(),

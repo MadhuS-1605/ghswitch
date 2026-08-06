@@ -20,6 +20,45 @@ type Profile struct {
 	GPGKey  string
 	GHToken string
 	GHHost  string
+	Hosts   []HostCred // additional hosts for this profile (multi-host), from [name@host] sections
+}
+
+// HostCred overrides SSH key / GPG key / token for one additional host on a
+// profile — e.g. a "work" profile used against both github.com and a GitHub
+// Enterprise host, each with its own key and token.
+type HostCred struct {
+	Host    string
+	SSHKey  string
+	GPGKey  string
+	GHToken string
+}
+
+// ForHost returns a copy of p with SSH/GPG/token overridden by the matching
+// entry in p.Hosts, if any. Falls back to p's own (primary-host) credentials
+// otherwise, so callers can always just call ForHost(remoteHost) even when
+// the profile has no extra hosts configured.
+func (p Profile) ForHost(host string) Profile {
+	if host == "" {
+		return p
+	}
+	for _, h := range p.Hosts {
+		if h.Host != host {
+			continue
+		}
+		out := p
+		out.GHHost = h.Host
+		if h.SSHKey != "" {
+			out.SSHKey = h.SSHKey
+		}
+		if h.GPGKey != "" {
+			out.GPGKey = h.GPGKey
+		}
+		if h.GHToken != "" {
+			out.GHToken = h.GHToken
+		}
+		return out
+	}
+	return p
 }
 
 func Dir() string {
@@ -60,7 +99,8 @@ func Load() ([]Profile, error) {
 	defer f.Close()
 
 	var profiles []Profile
-	var cur *Profile
+	var cur *Profile     // current [name] section
+	var curHost *HostCred // current [name@host] sub-section, if any
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -68,15 +108,40 @@ func Load() ([]Profile, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			profiles = append(profiles, Profile{Name: strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")})
+			inner := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
+			if base, host, ok := strings.Cut(inner, "@"); ok {
+				curHost = nil
+				for i := range profiles {
+					if profiles[i].Name == base {
+						profiles[i].Hosts = append(profiles[i].Hosts, HostCred{Host: host})
+						curHost = &profiles[i].Hosts[len(profiles[i].Hosts)-1]
+						break
+					}
+				}
+				cur = nil
+				continue
+			}
+			profiles = append(profiles, Profile{Name: inner})
 			cur = &profiles[len(profiles)-1]
-			continue
-		}
-		if cur == nil {
+			curHost = nil
 			continue
 		}
 		key, val, ok := strings.Cut(line, "=")
 		if !ok {
+			continue
+		}
+		if curHost != nil {
+			switch key {
+			case "ssh_key":
+				curHost.SSHKey = val
+			case "gpg_key":
+				curHost.GPGKey = val
+			case "gh_token":
+				curHost.GHToken = val
+			}
+			continue
+		}
+		if cur == nil {
 			continue
 		}
 		switch key {
@@ -137,6 +202,20 @@ func Save(profiles []Profile) error {
 			host = "github.com"
 		}
 		fmt.Fprintf(&b, "gh_host=%s\n\n", host)
+
+		for _, h := range p.Hosts {
+			fmt.Fprintf(&b, "[%s@%s]\n", p.Name, h.Host)
+			if h.SSHKey != "" {
+				fmt.Fprintf(&b, "ssh_key=%s\n", h.SSHKey)
+			}
+			if h.GPGKey != "" {
+				fmt.Fprintf(&b, "gpg_key=%s\n", h.GPGKey)
+			}
+			if h.GHToken != "" {
+				fmt.Fprintf(&b, "gh_token=%s\n", h.GHToken)
+			}
+			b.WriteString("\n")
+		}
 	}
 	return os.WriteFile(ConfigFile(), []byte(b.String()), 0o600)
 }

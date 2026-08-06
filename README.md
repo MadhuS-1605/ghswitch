@@ -121,6 +121,7 @@ gitconfig, but the env vars are the source of truth.
 | `ghswitch completion <shell>` | Generate a shell-completion script (bash/zsh/fish/powershell) |
 | `ghswitch login [profile]` | Device-flow GitHub login, saves token to a profile |
 | `ghswitch add` | Add a profile (guided prompts) |
+| `ghswitch add-host <profile> <host>` | Attach a secondary GitHub host to a profile (multi-host) — own SSH key/GPG key/token per host, auto-selected by the repo's origin remote |
 | `ghswitch list` / `ls` | List all profiles with active marker |
 | `ghswitch local` | Apply a profile to the current repo only |
 | `ghswitch auto` | Detect a matching profile (`.ghswitch.yml` or `user.email`) and apply locally |
@@ -197,7 +198,7 @@ gitconfig, but the env vars are the source of truth.
 | Command | Description |
 |---|---|
 | `ghswitch bootstrap <url> [profile]` | Clone + apply a profile locally |
-| `ghswitch export [file]` / `import <file>` | Share profiles with tokens redacted |
+| `ghswitch export [file]` / `import <file-or-url>` | Share profiles with tokens redacted; `import` accepts a URL too, for team presets |
 | `ghswitch repos [list\|add\|rm\|clear]` | Multi-repo registry (auto-tracked on `local`/`auto`) |
 | `ghswitch sync-all` | Sync every registered repo |
 | `ghswitch stats [days]` | Per-profile commit counts in the current repo |

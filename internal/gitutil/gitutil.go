@@ -37,6 +37,33 @@ func RepoRoot() string {
 	return out
 }
 
+// RemoteHost extracts the host from the "origin" remote URL, handling both
+// SSH ("git@host:owner/repo.git") and HTTPS ("https://host/owner/repo.git")
+// forms. Returns "" if there's no origin remote or the URL doesn't parse.
+func RemoteHost() string {
+	url, err := Run("remote", "get-url", "origin")
+	if err != nil || url == "" {
+		return ""
+	}
+	if strings.HasPrefix(url, "git@") {
+		rest := strings.TrimPrefix(url, "git@")
+		host, _, ok := strings.Cut(rest, ":")
+		if !ok {
+			return ""
+		}
+		return host
+	}
+	for _, prefix := range []string{"https://", "http://", "ssh://git@", "ssh://"} {
+		if strings.HasPrefix(url, prefix) {
+			rest := strings.TrimPrefix(url, prefix)
+			host, _, _ := strings.Cut(rest, "/")
+			host, _, _ = strings.Cut(host, "@")
+			return host
+		}
+	}
+	return ""
+}
+
 // UpstreamOf returns the upstream ref for the given ref ("HEAD" if empty),
 // or "" if none is configured.
 func UpstreamOf(ref string) string {

@@ -7,6 +7,57 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// newAddHostCmd attaches a secondary host to an existing profile — e.g. a
+// "work" profile used against both github.com and a GitHub Enterprise host,
+// each with its own SSH key / GPG key / token. Applying that profile inside
+// a repo whose origin remote resolves to the extra host swaps in these
+// credentials automatically (see config.Profile.ForHost).
+func newAddHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-host <profile> <host>",
+		Short: "Add a secondary GitHub host to an existing profile (multi-host)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name, host := args[0], args[1]
+			p, found := config.Get(name)
+			if !found {
+				errf("Profile %q not found.", name)
+				return nil
+			}
+			for _, h := range p.Hosts {
+				if h.Host == host {
+					warn("Profile %q already has host %q. Use 'ghswitch edit' to modify.", name, host)
+					return nil
+				}
+			}
+			section("Add host %s to profile %s", host, name)
+			hc := config.HostCred{
+				Host:    host,
+				SSHKey:  prompt("SSH key path for this host (blank to reuse profile default):"),
+				GPGKey:  prompt("GPG key ID for this host (blank to reuse profile default):"),
+				GHToken: prompt("GitHub token for this host (blank to skip):"),
+			}
+			p.Hosts = append(p.Hosts, hc)
+
+			profiles, err := config.Load()
+			if err != nil {
+				return err
+			}
+			for i := range profiles {
+				if profiles[i].Name == name {
+					profiles[i] = p
+					break
+				}
+			}
+			if err := config.Save(profiles); err != nil {
+				return err
+			}
+			ok("Host %q added to profile %q.", host, name)
+			return nil
+		},
+	}
+}
+
 func newAddCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "add",
