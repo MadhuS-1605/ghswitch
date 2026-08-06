@@ -32,6 +32,7 @@ brews:
   - repository:
       owner: MadhuS-1605
       name: homebrew-ghswitch
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: https://github.com/MadhuS-1605/ghswitch
     description: GitHub-aware git toolkit — switch identities, manage branches, commit, sync, and open PRs
