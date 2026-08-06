@@ -1,0 +1,42 @@
+version: 2
+
+project_name: ghswitch
+
+builds:
+  - main: ./cmd/ghswitch
+    binary: ghswitch
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
+
+# Requires a separate `MadhuS-1605/homebrew-ghswitch` tap repo to exist
+# before this section can publish — see README "Installation" for setup.
+brews:
+  - repository:
+      owner: MadhuS-1605
+      name: homebrew-ghswitch
+    directory: Formula
+    homepage: https://github.com/MadhuS-1605/ghswitch
+    description: GitHub-aware git toolkit — switch identities, manage branches, commit, sync, and open PRs
+    license: MIT
+    install: |
+      bin.install "ghswitch"

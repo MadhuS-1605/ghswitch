@@ -1,6 +1,6 @@
 # ◉ ghswitch
 
-> **GitHub-aware git toolkit for the terminal** — switch identities, manage branches, commit, sync, stash, and open PRs from one tiny script. GitKraken-style UX, zero dependencies.
+> **No more committing with the wrong account.** A single Go binary that switches your entire GitHub identity — commit author, SSH key, GPG signing, `gh` auth — per terminal, instantly. Plus a full GitHub-aware git toolkit: branches, commits, sync, history, stashes, PRs, releases.
 
 ```
 ╔══════════════════════════════════════════╗
@@ -8,309 +8,206 @@
 ╚══════════════════════════════════════════╝
 
 ▸ Switch global profile
-  ↑↓ / j k to navigate · Enter to select · q to quit
+  ↑↓/j k or mouse · enter/click to select · q to quit
 
-  ██  › work                  ● active
-      personal
-      client-acme
+  › work                  ● active
+    personal
+    client-acme
 ```
 
 ---
 
+## Why
+
+Every "account switcher" that just flips `gh auth switch` is solving the
+wrong problem — API tokens are one piece of your GitHub identity. Commit
+author, SSH key, and GPG signing have to move together, or you end up
+committing to the wrong repo under the wrong name. `ghswitch` switches all
+of it at once.
+
+And unlike a tool that mutates `~/.gitconfig`, `ghswitch` switches your
+identity **per terminal** — open two shells, run two different accounts in
+parallel, with zero risk of one clobbering the other.
+
 ## Features
 
-- **Arrow-key TUI** — navigate profiles, branches, commits, reflog, stashes like GitKraken
-- **Profile switcher** — git config, SSH keys, GPG signing, and gh-CLI auth all swap together
-- **Per-repo override** — apply a profile locally without touching global config
-- **Daily git ops** — branch / commit / sync / push / pull / stash / log / diff in one tool
-- **History surgery** — interactive `reflog`, `revert`, `cherry-pick`, `rebase` wizards
-- **Smart sync** — `ghswitch sync` does pull --rebase + push, with auto `-u` on first push
-- **Multi-repo** — `ghswitch repos` registry + `ghswitch sync-all` across every registered repo
-- **GitHub depth** — PRs, issues, `review` flow, `inbox`, `open` in browser, `release` wizard
-- **Repo dashboard** — `ghswitch repo` prints branch, ahead/behind, dirty count, active profile
-- **Token hygiene** — `doctor` flags expiring fine-grained PATs; `rotate` walks you through replacement
-- **Per-profile stats** — `ghswitch stats` shows commit counts per profile in the current repo
-- **bash 3.2+ compatible** — macOS (default bash), Linux, Windows Git Bash / WSL
-- **Zero dependencies** — just bash + git. Optional: `gh` for PRs, `gpg` for signed commits.
+- **Session isolation** — `ghswitch work` in one terminal and `ghswitch personal` in another are fully independent; each shell resolves its own identity via exported env vars, not a shared global file
+- **One switch, everything moves** — git identity, SSH key, GPG signing, and `gh` CLI auth all swap together
+- **Device-flow login** — `ghswitch login` authenticates through GitHub's OAuth device flow (same mechanism `gh auth login` uses), no manual token pasting required
+- **`reauthor`** — already committed under the wrong identity? Rewrite author/committer on a commit range to match the active profile in one command
+- **Arrow-key + mouse TUI** — every menu (profiles, branches, stashes, PRs) supports both
+- **Per-repo pin** — `ghswitch local` applies a profile to one repo without touching global/session identity; `.ghswitch.yml` auto-declares it
+- **Full git toolkit** — branch / commit / sync / push / pull / stash / log / diff, conventional-commit wizard, fixup + autosquash, interactive rebase, cherry-pick, reauthor
+- **GitHub depth** — PRs, issues, review flow, inbox, release wizard, open-in-browser
+- **Team features** — export/import profiles (tokens redacted), multi-repo registry + `sync-all`, per-profile commit stats
+- **Diagnostics** — `doctor` audits SSH key perms, `gh` auth, GPG keyring, token expiry, and identity/profile mismatches
+- **Single static binary** — macOS, Linux, Windows; no runtime dependencies beyond `git` (optional: `gh` for GitHub features, `gpg` for signed commits)
 
 ---
 
 ## Installation
 
+**Homebrew**
 ```bash
-# 1. Download
-curl -O https://raw.githubusercontent.com/MadhuS-1605/Github-Profile-Switcher/main/ghswitch.sh
-
-# 2. Make executable
-chmod +x ghswitch.sh
-
-# 3. Install globally
-sudo cp ghswitch.sh /usr/local/bin/ghswitch
-
-# 4. Verify
-ghswitch help
+brew install MadhuS-1605/ghswitch/ghswitch
 ```
 
-**Linux (no sudo)**
+**curl**
 ```bash
-mkdir -p ~/.local/bin
-cp ghswitch.sh ~/.local/bin/ghswitch
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+curl -fsSL https://raw.githubusercontent.com/MadhuS-1605/ghswitch/main/scripts/install.sh | bash
 ```
 
-**Windows (Git Bash)**
+**go install**
 ```bash
-mkdir -p ~/bin
-cp ghswitch.sh ~/bin/ghswitch
-echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+go install github.com/MadhuS-1605/ghswitch/cmd/ghswitch@latest
 ```
 
-> **Important:** Always use `git@github.com:...` (SSH) remote URLs — not HTTPS — so ghswitch's key management takes effect.
+Then enable session isolation by adding this to your shell rc (`~/.zshrc`, `~/.bashrc`):
+```bash
+eval "$(ghswitch shellinit)"
+```
+
+> **Important:** Use `git@github.com:...` (SSH) remote URLs, not HTTPS, so ghswitch's SSH key management takes effect.
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# Add your accounts
-ghswitch add          # prompts: name, email, SSH key, GPG key, gh token, gh host
-
-# See all profiles
-ghswitch list
-
-# Launch the TUI switcher
-ghswitch
-
-# Or switch directly by name
-ghswitch work
-ghswitch personal
+ghswitch login work        # device-flow login, saves token to profile "work"
+ghswitch add                # or add a profile manually (name, email, SSH key, GPG key...)
+ghswitch list                # see all profiles
+ghswitch                     # launch the interactive switcher
+ghswitch work                 # or switch directly by name
 ```
+
+Open a second terminal and run `ghswitch personal` — the first terminal
+keeps using `work`, unaffected.
+
+---
+
+## How session isolation works
+
+`ghswitch <profile>` doesn't write to `~/.gitconfig`. It prints
+`export GIT_AUTHOR_NAME=... GIT_AUTHOR_EMAIL=... GIT_SSH_COMMAND=...` to
+stdout. The shell function installed by `shellinit` evals that output into
+the *current* shell only — git reads those env vars in preference to
+`user.name`/`user.email`/`core.sshCommand`, so each terminal gets an
+independent identity with nothing shared. A best-effort mirror is also
+written to `git config --global` as a fallback for tools that only read
+gitconfig, but the env vars are the source of truth.
+
+`ghswitch local` is unaffected by any of this — it writes `git config
+--local`, which is already repo-scoped.
 
 ---
 
 ## Commands
 
-### Profiles
+### Identity
 
 | Command | Description |
 |---|---|
-| `ghswitch` | Interactive arrow-key profile switcher |
-| `ghswitch add` | Add a new profile (guided prompts) |
+| `ghswitch` | Interactive switcher (arrow keys + mouse) |
+| `ghswitch <name>` / `switch <name>` | Switch directly, session-scoped |
+| `ghswitch login [profile]` | Device-flow GitHub login, saves token to a profile |
+| `ghswitch add` | Add a profile (guided prompts) |
 | `ghswitch list` / `ls` | List all profiles with active marker |
-| `ghswitch local` | Apply profile to current repo only (`git --local`) |
-| `ghswitch status` / `whoami` | Current git identity + gh-CLI auth |
+| `ghswitch local` | Apply a profile to the current repo only |
+| `ghswitch auto` | Detect a matching profile (`.ghswitch.yml` or `user.email`) and apply locally |
+| `ghswitch status` / `whoami` | Current identity (session + global + local) + `gh` auth |
 | `ghswitch unset` / `reset` | Clear global git identity |
 | `ghswitch edit` | Open `profiles.conf` in `$EDITOR` |
 | `ghswitch delete` / `rm` | Remove a profile |
-| `ghswitch <name>` | Switch directly, e.g. `ghswitch work` |
+| `ghswitch shellinit` | Emit the shell function that enables session isolation |
+| `ghswitch reauthor` | Rewrite author/committer on past commits to match the active profile |
+| `ghswitch doctor` | Audit SSH keys, `gh` auth + token expiry, GPG keyring, identity mismatches |
+| `ghswitch rotate [profile]` | Open token settings page, paste new token, re-auth `gh` |
+| `ghswitch hooks-install` | Install a pre-commit guard that blocks commits with the wrong identity |
 
 ### Branches
 
 | Command | Description |
 |---|---|
-| `ghswitch branch` / `br` | Arrow-key switcher over all branches |
+| `ghswitch branch` / `br` | Arrow-key/mouse switcher over all branches |
 | `ghswitch recent` | Switcher over the 10 most recently active branches |
-| `ghswitch new [name]` | Create + checkout a new branch from current |
-| `ghswitch rename [name]` / `mv` | Rename current branch (warns if pushed) |
+| `ghswitch new [name]` | Create + checkout a new branch |
+| `ghswitch rename [name]` / `mv` | Rename current branch |
 | `ghswitch clean` | Delete local branches merged into the default branch |
-| `ghswitch fresh` / `nuke` | `fetch --prune` + drop `gone` tracking branches + `gc --auto` |
+| `ghswitch fresh` / `nuke` | `fetch --prune` + drop gone branches + `gc --auto` |
 
 ### Commits
 
 | Command | Description |
 |---|---|
-| `ghswitch commit "msg"` / `c` | `git add -A` + commit (prompts if no message) |
-| `ghswitch cc` | Conventional commit wizard — pick `feat`/`fix`/etc., scope, subject, breaking flag |
-| `ghswitch fixup` | Pick a past commit from a menu, create a fixup, auto-squash via interactive rebase |
-| `ghswitch amend` | Add staged + amend last commit, message unchanged |
+| `ghswitch commit "msg"` / `c` | `git add -A` + commit |
+| `ghswitch cc` | Conventional-commit wizard |
+| `ghswitch fixup` | Pick a commit, create a fixup, auto-squash via rebase |
+| `ghswitch amend` | Add staged + amend last commit |
 | `ghswitch undo` | Soft reset HEAD~1, keeping changes staged |
-| `ghswitch wip` | One-shot stash with auto-message: `WIP @ <branch> · N file(s) · HH:MM` |
-| `ghswitch wip-pop` | Pop the most recent stash |
-| `ghswitch st` | **Interactive status** — lazygit-style picker (j/k navigate, s stage, u unstage, d diff, x discard, c commit) |
+| `ghswitch wip` / `wip-pop` | One-shot stash / restore |
 
-### Sync
+### Sync & history
 
 | Command | Description |
 |---|---|
-| `ghswitch sync` | Pull `--rebase` then push (auto `-u` on first push) |
-| `ghswitch pull` | Pull `--rebase` from upstream |
-| `ghswitch push` | Push current branch (auto `-u` on first push) |
-| `ghswitch fetch` | `git fetch --all --prune` |
-| `ghswitch sync-all` | Run sync across every repo in the registry; reports synced/skipped/failed |
+| `ghswitch sync` | Pull `--rebase` then push |
+| `ghswitch pull` / `push` / `fetch` | Individual sync steps |
+| `ghswitch log [N]` / `l` | Pretty graph log |
+| `ghswitch diff` / `d` | Working-tree diff vs HEAD |
+| `ghswitch who [file]` | Top contributors or `git blame` |
+| `ghswitch revert` | Pick a commit, generate a revert |
+| `ghswitch cherry-pick` / `cp` | Pick a branch + commit, cherry-pick onto current |
+| `ghswitch rebase` | Interactive rebase wizard |
+| `ghswitch conflict` / `merge` | Walk through unmerged files |
 
-### History
-
-| Command | Description |
-|---|---|
-| `ghswitch log [N]` / `l` | Pretty graph log, default 20 commits |
-| `ghswitch diff` / `d` | Working-tree diff vs HEAD with stat |
-| `ghswitch who [file]` | Top contributors (or `git blame` a file) |
-| `ghswitch reflog` | Interactive reflog browser → show diff / checkout / reset / cherry-pick / branch-from |
-| `ghswitch revert` | Pick a commit from the last 30, generate a revert commit |
-| `ghswitch cherry-pick` / `cp` | Pick a source branch, then a commit; cherry-pick onto current branch |
-| `ghswitch rebase` | Interactive rebase wizard: last N commits / onto branch / onto upstream |
-
-### Stash · Tags · Worktrees
+### Stash · tags · worktrees
 
 | Command | Description |
 |---|---|
-| `ghswitch stash` | Menu: save / list / pop / apply / drop / clear |
-| `ghswitch tag` | Menu: list / create (annotated or lightweight) / delete (local + remote) / push-all |
-| `ghswitch worktree` / `wt` | Menu: list / add (existing or new branch) / remove |
+| `ghswitch stash` | save / list / pop / apply / drop / clear |
+| `ghswitch tag` | list / create / delete / push-all |
+| `ghswitch worktree` / `wt` | list / add / remove |
 
 ### GitHub
 
 | Command | Description |
 |---|---|
-| `ghswitch pr` | Open a pull request via `gh` (uses active profile's token) |
-| `ghswitch prs` / `pr-list` | Rich PR list with check status (✓/✗/⏳) + review decision |
-| `ghswitch pr-checkout [N]` / `prco` | Check out PR by number, or pick from menu |
-| `ghswitch pr-status` | `gh pr status` for the current branch |
-| `ghswitch review` | Pick a PR + action (view / diff / approve / request-changes / comment / web) |
-| `ghswitch issues` | List open issues with number, title, labels, author |
-| `ghswitch inbox` / `notifications` | Review-requested + mentioning-you + assigned, across all repos |
-| `ghswitch open [target]` | Open repo / `branch` / `pr` / `issues` / `actions` / `settings` in browser (honors `gh_host`) |
-| `ghswitch release` | Wizard: bump (patch/minor/major/custom) → tag → push → `gh release create` with notes |
-| `ghswitch conflict` / `merge` | Walk through unmerged files in `$EDITOR`, mark resolved |
+| `ghswitch pr` | Open a pull request via `gh` |
+| `ghswitch prs` / `pr-list` | PR list with review status |
+| `ghswitch pr-checkout [N]` / `prco` | Check out a PR |
+| `ghswitch pr-status` | Status for the current branch |
+| `ghswitch review` | Pick a PR + action (view/diff/approve/request-changes/comment) |
+| `ghswitch issues` | List open issues |
+| `ghswitch inbox` / `notifications` | Review-requested + assigned + mentions, across repos |
+| `ghswitch open [target]` | Open repo/branch/pr/issues/actions/settings in browser |
+| `ghswitch release` | Bump → tag → push → `gh release create` wizard |
 
-### Repo & Diagnostics
-
-| Command | Description |
-|---|---|
-| `ghswitch repo` / `info` | Dashboard: branch, upstream, ahead/behind, dirty count, profile |
-| `ghswitch doctor` | Audit ssh-agent, key perms, gh auth, **token expiry + scopes**, GPG keyring, identity-vs-profile mismatch |
-| `ghswitch auto` | Detect a matching profile (by `user.email`) and apply locally |
-| `ghswitch stats [days]` | Per-profile commit count in the current repo (default 30 days) |
-| `ghswitch repos [sub]` | Multi-repo registry — `list` (default) / `add` / `rm [path]` / `clear`. Auto-registers on `local` + `auto` |
-| `ghswitch rotate [profile]` | Open settings page → paste new token → rewrite `profiles.conf` → re-auth `gh` |
-
-### Team Setup
+### Team & multi-repo
 
 | Command | Description |
 |---|---|
-| `ghswitch bootstrap <url> [profile]` | `git clone` + apply chosen profile locally |
-| `ghswitch hooks-install` | Install a pre-commit guard that blocks commits with the wrong identity |
-| `ghswitch signed` | Wizard: generates an SSH or GPG signing key, uploads to GitHub via `gh`, configures `commit.gpgsign` |
-| `ghswitch shellinit` | Emit a zsh/bash hook — `eval "$(ghswitch shellinit)"` in your rc to warn on `cd` |
-| `ghswitch export [file]` | Export `profiles.conf` with tokens redacted, ready to share |
-| `ghswitch import <file>` | Merge profiles from a shared file (skips existing names) |
-| `ghswitch help` / `-h` | Show help |
+| `ghswitch bootstrap <url> [profile]` | Clone + apply a profile locally |
+| `ghswitch export [file]` / `import <file>` | Share profiles with tokens redacted |
+| `ghswitch repos [list\|add\|rm\|clear]` | Multi-repo registry (auto-tracked on `local`/`auto`) |
+| `ghswitch sync-all` | Sync every registered repo |
+| `ghswitch stats [days]` | Per-profile commit counts in the current repo |
 
 ### Per-repo preset (`.ghswitch.yml`)
-
-Drop a `.ghswitch.yml` in the repo root and `ghswitch auto` will apply that profile automatically — no email-matching needed:
 
 ```yaml
 profile: client-acme
 ```
 
-Combined with `eval "$(ghswitch shellinit)"`, every `cd` into the repo verifies your `user.email` matches the declared profile and warns if it doesn't. The repo *declares* its identity instead of you remembering.
+`ghswitch auto` applies that profile automatically — no email-matching
+needed. The repo declares its identity instead of you remembering it.
 
 ---
 
-## Team Onboarding
+## Config file
 
-Share profiles with your team without leaking tokens:
-
-```bash
-# Lead exports — tokens stripped
-ghswitch export team-profiles.conf
-git add team-profiles.conf && git commit -m "share team git profiles"
-
-# Each teammate imports + adds their own token
-ghswitch import team-profiles.conf
-ghswitch edit            # paste your own gh_token under each profile
-ghswitch doctor          # verify everything resolves
-```
-
-**Identity guardrails for every repo:**
-
-```bash
-# Fail commits that use the wrong email for the active profile
-cd ~/work/acme-repo
-ghswitch local           # set repo to "client-acme" profile
-ghswitch hooks-install   # pre-commit guard blocks identity drift
-
-# Or warn on every `cd` instead of failing on commit
-echo 'eval "$(ghswitch shellinit)"' >> ~/.zshrc
-```
-
-**One-shot new-laptop / new-repo setup:**
-
-```bash
-ghswitch bootstrap git@github.com:acme/website.git client-acme
-cd website   # already configured with the right identity
-```
-
----
-
-## Daily Workflow Examples
-
-```bash
-# Morning: refresh + see what's open
-ghswitch fresh         # fetch --prune + drop gone branches + gc
-ghswitch repo
-ghswitch prs           # list PRs with check + review status
-
-# Pick up a teammate's PR for review
-ghswitch pr-checkout   # menu of open PRs
-
-# Start a feature
-ghswitch new feature/login
-# ... edit files ...
-ghswitch st            # interactive status: stage/unstage with arrows
-ghswitch cc            # conventional commit wizard
-ghswitch sync          # pulls + pushes in one shot
-ghswitch pr            # open PR
-
-# Forgot something — fix a past commit cleanly
-# (edit the file you forgot)
-ghswitch fixup         # pick the commit, auto-squash via rebase
-
-# Context switch
-ghswitch wip           # quick stash of WIP
-ghswitch recent        # jump to a different recent branch
-# ... do other work ...
-ghswitch recent        # jump back
-ghswitch wip-pop       # restore your work
-
-# Switch profile on a different repo
-cd ~/work/acme
-ghswitch auto          # reads .ghswitch.yml or matches user.email
-
-# Multi-repo: keep every repo in sync
-ghswitch repos         # list all registered repos (auto-tracked from `local`/`auto`)
-ghswitch sync-all      # pull --rebase + push across every clean repo
-
-# Recover from a bad rebase / lost commit
-ghswitch reflog        # pick the entry, then: show diff / checkout / branch-from / reset
-
-# Cut a release with auto-generated notes
-ghswitch release       # bump (patch/minor/major) → tag → push → gh release create
-
-# Token about to expire? doctor warns; rotate replaces it
-ghswitch doctor        # surfaces "expires in N days"
-ghswitch rotate work   # opens settings page, prompts for new token, re-auths gh
-```
-
----
-
-## What It Manages
-
-| Layer | Config Key | Effect |
-|---|---|---|
-| Git identity | `user.name` / `user.email` | Commit author, global or per-repo |
-| SSH key | `core.sshCommand` | Forces specific key with `IdentitiesOnly=yes` |
-| SSH agent | *(runtime)* | Adds key to agent if socket is active |
-| GPG signing | `user.signingKey` + `commit.gpgSign` | Signed commits with your key |
-| GitHub Token | `credential.helper` / `gh` CLI | Auth for Git over HTTPS and logs into `gh` |
-| gh CLI | *(runtime check)* | Verifies `gh auth status` for the configured host |
-
----
-
-## Config File
-
-Located at `~/.config/ghswitch/profiles.conf`. Created automatically on first run.
+Located at `~/.config/ghswitch/profiles.conf`, created automatically on
+first run:
 
 ```ini
 [work]
@@ -326,99 +223,35 @@ name=Jane Doe
 email=jane@gmail.com
 ssh_key=~/.ssh/id_ed25519_personal
 gh_host=github.com
-
-[client-acme]
-name=Jane Doe
-email=jane@acme.io
-ssh_key=~/.ssh/id_ed25519_acme
-gh_host=github.com
 ```
 
-All fields except `name` and `email` are optional.
+All fields except `name` and `email` are optional. `gh_token` is populated
+automatically by `ghswitch login`.
 
 ---
 
-## SSH Key Setup
-
-Generate a separate key per account and add each public key to the respective GitHub account under **Settings → SSH and GPG keys**.
+## SSH key setup
 
 ```bash
-# Work
 ssh-keygen -t ed25519 -C "you@company.com" -f ~/.ssh/id_ed25519_work
-
-# Personal
 ssh-keygen -t ed25519 -C "you@gmail.com" -f ~/.ssh/id_ed25519_personal
-
-# Copy public key to clipboard (macOS)
-cat ~/.ssh/id_ed25519_work.pub | pbcopy
 ```
 
-Fix permissions if you see SSH warnings:
+Add each public key to the matching GitHub account under **Settings → SSH
+and GPG keys**, then fix permissions if you see warnings:
+
 ```bash
 chmod 700 ~/.ssh
-chmod 600 ~/.ssh/id_ed25519_work      # private key
-chmod 644 ~/.ssh/id_ed25519_work.pub  # public key
-```
-
----
-
-## Per-repo Override
-
-Apply a profile to a single repo without changing your global identity:
-
-```bash
-cd ~/projects/client-website
-ghswitch local          # pick "client-acme" from the menu
-git config user.email   # confirms local override is active
-```
-
----
-
-## Troubleshooting
-
-**Blank output / no prompts**
-```bash
-bash -x ghswitch add 2>&1 | head -40
-# If line 2 shows "set -euo pipefail" — old version is still installed
-sudo cp ghswitch.sh $(which ghswitch)
-```
-
-**403 on git push**
-```bash
-# Switch remote from HTTPS to SSH
-git remote set-url origin git@github.com:USERNAME/REPO.git
-
-# Clear stale macOS Keychain credentials
-git credential-osxkeychain erase <<EOF
-protocol=https
-host=github.com
-EOF
-```
-
-**Wrong key being used**
-```bash
-ghswitch status         # check active profile and sshCommand
-ghswitch edit           # fix ssh_key path — must point to private key, not .pub
-```
-
-**gh CLI warning on switch**
-```bash
-gh auth login --hostname github.com
+chmod 600 ~/.ssh/id_ed25519_work
+chmod 644 ~/.ssh/id_ed25519_work.pub
 ```
 
 ---
 
 ## Compatibility
 
-| Platform | Shell | Status |
-|---|---|---|
-| macOS (12+) | bash 3.2 (system) | ✅ Tested |
-| macOS (12+) | zsh (via bash shebang) | ✅ Works |
-| Ubuntu / Debian | bash 5.x | ✅ Tested |
-| Windows | Git Bash (MINGW) | ✅ Works |
-| Windows | WSL2 | ✅ Works |
-
----
+macOS, Linux, Windows — single static Go binary, no interpreter/runtime
+dependency beyond `git` itself.
 
 ## License
 
