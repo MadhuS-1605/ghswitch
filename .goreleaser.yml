@@ -28,8 +28,6 @@ changelog:
   filters:
     exclude: ["^docs:", "^test:", "^chore:"]
 
-# Requires a separate `MadhuS-1605/homebrew-ghswitch` tap repo to exist
-# before this section can publish — see README "Installation" for setup.
 brews:
   - repository:
       owner: MadhuS-1605
