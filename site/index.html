@@ -729,7 +729,7 @@
         <p class="bio-caption">identity, rendered</p>
         <dl class="bio-fields">
           <div><dt>Type</dt><dd>P — personal use</dd></div>
-          <div><dt>Document No.</dt><dd>v0.1.0</dd></div>
+          <div><dt>Document No.</dt><dd data-version>v0.2.0</dd></div>
           <div><dt>Surname</dt><dd>SWITCH</dd></div>
           <div><dt>Given names</dt><dd>GH</dd></div>
           <div><dt>Authority</dt><dd>MADHUS-1605</dd></div>
@@ -979,7 +979,12 @@
         <h2>Renewal record</h2>
         <p class="section-sub">Every issued version, in order.</p>
       </div>
-      <div class="amendments">
+      <div class="amendments" id="amendments-list">
+        <div class="amend-row">
+          <span></span>
+          <span class="amend-date">2026-08-06</span>
+          <span class="amend-note"><b>v0.2.0</b> — multi-host profiles, URL-based team presets, audit log, PowerShell installer, Claude Code skill.</span>
+        </div>
         <div class="amend-row">
           <span></span>
           <span class="amend-date">2026-08-06</span>
@@ -1078,7 +1083,7 @@
       <span>ghswitch · MIT licensed</span>
       <div class="foot-links">
         <a href="https://github.com/MadhuS-1605/ghswitch">github.com/MadhuS-1605/ghswitch</a>
-        <a href="https://github.com/MadhuS-1605/ghswitch/releases/tag/v0.1.0">v0.1.0</a>
+        <a href="https://github.com/MadhuS-1605/ghswitch/releases/tag/v0.2.0" data-version data-version-href>v0.2.0</a>
       </div>
     </div>
   </div>
@@ -1155,4 +1160,36 @@
   } else {
     document.querySelectorAll('.stamp').forEach(function (s) { s.classList.add('in-view'); });
   }
+</script>
+
+<script>
+  // Pull live release data so the version number and renewal record never
+  // go stale after a goreleaser run. Falls back to the static HTML above
+  // (last version baked in at edit time) on any fetch/rate-limit failure.
+  // ponytail: no caching — GitHub's unauthenticated rate limit (60/hr per
+  // IP) is shared across all visitors behind the same NAT/proxy. Upgrade
+  // path: cache the response (localStorage + TTL) if this becomes an issue.
+  fetch('https://api.github.com/repos/MadhuS-1605/ghswitch/releases')
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (releases) {
+      if (!Array.isArray(releases) || releases.length === 0) return;
+      var latest = releases[0].tag_name;
+      var latestUrl = 'https://github.com/MadhuS-1605/ghswitch/releases/tag/' + latest;
+
+      document.querySelectorAll('[data-version]').forEach(function (el) {
+        el.textContent = latest;
+        if (el.hasAttribute('data-version-href')) el.href = latestUrl;
+      });
+
+      var list = document.getElementById('amendments-list');
+      if (!list) return;
+      var esc = function (s) { return s.replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); };
+      list.innerHTML = releases.map(function (r) {
+        var date = r.published_at ? r.published_at.slice(0, 10) : '—';
+        var note = (r.body || r.name || r.tag_name).split('\n')[0];
+        return '<div class="amend-row"><span></span><span class="amend-date">' + esc(date) +
+          '</span><span class="amend-note"><b>' + esc(r.tag_name) + '</b> — ' + esc(note) + '</span></div>';
+      }).join('');
+    })
+    .catch(function () { /* offline / rate-limited — static fallback stays as-is */ });
 </script>
