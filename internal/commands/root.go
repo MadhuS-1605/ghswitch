@@ -5,11 +5,12 @@ package commands
 
 import "github.com/spf13/cobra"
 
-func Root() *cobra.Command {
+func Root(version string) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "ghswitch",
-		Short: "GitHub-aware git toolkit — switch identities, manage branches, commit, sync, and open PRs",
-		Args:  cobra.ArbitraryArgs,
+		Use:     "ghswitch",
+		Short:   "GitHub-aware git toolkit — switch identities, manage branches, commit, sync, and open PRs",
+		Version: version,
+		Args:    cobra.ArbitraryArgs,
 		// Errors here are almost always "profile not found" / git command
 		// failures, not usage mistakes — dumping the full 60-command list
 		// on every error is noise, not help. SilenceErrors avoids a double

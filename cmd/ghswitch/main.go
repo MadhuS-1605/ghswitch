@@ -9,8 +9,11 @@ import (
 	"github.com/MadhuS-1605/ghswitch/internal/commands"
 )
 
+// version is set via -ldflags "-X main.version=..." at release build time.
+var version = "dev"
+
 func main() {
-	if err := commands.Root().Execute(); err != nil {
+	if err := commands.Root(version).Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
