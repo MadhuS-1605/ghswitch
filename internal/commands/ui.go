@@ -14,13 +14,53 @@ import (
 // "$(ghswitch <profile>)"` consumes. Mixing the two would eval arbitrary
 // status text as shell commands.
 
-func section(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "\n▸ "+format+"\n", a...)
+const (
+	colorReset  = "\033[0m"
+	colorBold   = "\033[1m"
+	colorBlue   = "\033[34m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+	colorCyan   = "\033[36m"
+)
+
+// color wraps s in an ANSI code, unless NO_COLOR is set (https://no-color.org).
+func color(code, s string) string {
+	if os.Getenv("NO_COLOR") != "" {
+		return s
+	}
+	return code + s + colorReset
 }
-func ok(format string, a ...any)   { fmt.Fprintf(os.Stderr, "  ✓ "+format+"\n", a...) }
-func info(format string, a ...any) { fmt.Fprintf(os.Stderr, "  ℹ %s\n", fmt.Sprintf(format, a...)) }
-func warn(format string, a ...any) { fmt.Fprintf(os.Stderr, "  ⚠ %s\n", fmt.Sprintf(format, a...)) }
-func errf(format string, a ...any) { fmt.Fprintf(os.Stderr, "  ✗ %s\n", fmt.Sprintf(format, a...)) }
+
+// quiet suppresses ok/info/warn (but not errf) — apply.go sets it around its
+// per-field git/ssh/gh calls so a switch prints just two lines instead of
+// one per field.
+var quiet bool
+
+func section(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "\n"+color(colorBold+colorBlue, "▸ "+fmt.Sprintf(format, a...))+"\n")
+}
+func ok(format string, a ...any) {
+	if quiet {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  "+color(colorGreen, "✓")+" %s\n", fmt.Sprintf(format, a...))
+}
+func info(format string, a ...any) {
+	if quiet {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  "+color(colorCyan, "ℹ")+" %s\n", fmt.Sprintf(format, a...))
+}
+func warn(format string, a ...any) {
+	if quiet {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  "+color(colorYellow, "⚠")+" %s\n", fmt.Sprintf(format, a...))
+}
+func errf(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "  "+color(colorRed, "✗")+" %s\n", fmt.Sprintf(format, a...))
+}
 
 var stdin = bufio.NewReader(os.Stdin)
 

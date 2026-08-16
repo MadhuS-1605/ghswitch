@@ -15,11 +15,18 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// renderer is bound to stderr, not lipgloss's stdout-based default: the
+// picker draws on stderr (see tea.WithOutput below) so its color-support
+// detection has to look at stderr too, or callers that pipe stdout through
+// `eval "$(...)"` (ghswitch's own shell wrapper) make lipgloss think it's
+// non-interactive and silently strip all color.
+var renderer = lipgloss.NewRenderer(os.Stderr)
+
 var (
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("117")).Background(lipgloss.Color("235"))
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	activeStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
+	selectedStyle = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("117")).Background(lipgloss.Color("235"))
+	dimStyle      = renderer.NewStyle().Foreground(lipgloss.Color("245"))
+	activeStyle   = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
+	titleStyle    = renderer.NewStyle().Bold(true).Foreground(lipgloss.Color("183"))
 )
 
 type model struct {
@@ -99,8 +106,11 @@ func (m model) View() string {
 // Pick shows an interactive arrow-key/mouse menu over items and returns the
 // chosen one. active/activeLabel mark one entry as the currently-active
 // item (mirrors the bash version's "● active" suffix); pass "" to skip.
-// Falls back to a plain numbered prompt when stdout isn't a real terminal
-// (piped output, CI, non-interactive scripts).
+// Falls back to a plain numbered prompt when stderr isn't a real terminal
+// (piped output, CI, non-interactive scripts). Stderr, not stdout, is what
+// matters: the UI renders via tea.WithOutput(os.Stderr) below so that
+// callers can still capture stdout (e.g. `eval "$(ghswitch switch)"`)
+// without stdout-piping silently degrading the picker.
 func Pick(title string, items []string, active, activeLabel string) (string, error) {
 	if len(items) == 0 {
 		return "", fmt.Errorf("no items to choose from")
@@ -130,7 +140,7 @@ func Pick(title string, items []string, active, activeLabel string) (string, err
 }
 
 func isTTY() bool {
-	fi, err := os.Stdout.Stat()
+	fi, err := os.Stderr.Stat()
 	if err != nil {
 		return false
 	}

@@ -30,15 +30,14 @@ func applyGlobal(p config.Profile, ttl time.Duration) {
 	if host := gitutil.RemoteHost(); host != "" {
 		p = p.ForHost(host)
 	}
-	section("Applying profile: %s (session + global fallback)", p.Name)
+	section("Applying profile: %s", p.Name)
 
+	quiet = true
 	if p.GitName != "" {
 		_ = gitutil.ConfigSet("--global", "user.name", p.GitName)
-		ok("user.name  = %s", p.GitName)
 	}
 	if p.Email != "" {
 		_ = gitutil.ConfigSet("--global", "user.email", p.Email)
-		ok("user.email = %s", p.Email)
 	}
 	applySSHAndGPG(p, "--global")
 	applyGH(p)
@@ -53,11 +52,11 @@ func applyGlobal(p config.Profile, ttl time.Duration) {
 	if ttl > 0 {
 		expires := time.Now().Add(ttl).Unix()
 		env["GHSWITCH_EXPIRES"] = strconv.FormatInt(expires, 10)
-		ok("expires    = %s (%s)", time.Now().Add(ttl).Format("15:04"), ttl)
 	}
 	session.WriteExports(os.Stdout, env)
-	ok("Active profile → %s", p.Name)
-	info("Not session-isolated? Run: eval \"$(ghswitch shellinit)\" in your rc file, then re-run this switch.")
+	quiet = false
+
+	ok("Applied, switched to %s", p.Name)
 }
 
 // applyLocal pins a profile to the current repo only, via `git config
@@ -69,19 +68,21 @@ func applyLocal(p config.Profile) error {
 	if host := gitutil.RemoteHost(); host != "" {
 		p = p.ForHost(host)
 	}
-	section("Applying profile: %s (local, this repo only)", p.Name)
+	section("Applying profile: %s", p.Name)
 
+	quiet = true
 	if p.GitName != "" {
 		_ = gitutil.ConfigSet("--local", "user.name", p.GitName)
-		ok("user.name  = %s", p.GitName)
 	}
 	if p.Email != "" {
 		_ = gitutil.ConfigSet("--local", "user.email", p.Email)
-		ok("user.email = %s", p.Email)
 	}
 	applySSHAndGPG(p, "--local")
 	applyGH(p)
 	registerRepo()
+	quiet = false
+
+	ok("Applied, switched to %s", p.Name)
 	return nil
 }
 
