@@ -57,7 +57,7 @@ const shellinitScript = `ghswitch() {
       ;;
   esac
 }
-`
+` + chpwdShellHook
 
 func newShellinitCmd() *cobra.Command {
 	return &cobra.Command{

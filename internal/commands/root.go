@@ -62,6 +62,8 @@ func Root(version string) *cobra.Command {
 		newDoctorCmd(),
 		newShellinitCmd(),
 		newHiddenIsProfileCmd(),
+		newPromptCmd(),
+		newHiddenChpwdCheckCmd(),
 		// Git toolkit (Phase 4)
 		newBranchCmd(),
 		newNewBranchCmd(),
