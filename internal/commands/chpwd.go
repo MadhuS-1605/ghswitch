@@ -1,34 +1,61 @@
 package commands
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/MadhuS-1605/ghswitch/internal/config"
 	"github.com/MadhuS-1605/ghswitch/internal/gitutil"
+	"github.com/MadhuS-1605/ghswitch/internal/session"
 	"github.com/spf13/cobra"
 )
 
-// chpwdShellHook is appended by shellinit so every `cd` gets a fast,
-// silent-unless-mismatched identity check — an ambient version of the
-// opt-in pre-commit guard (hooks-install), catching the wrong-account case
-// before you start working, not just before you commit.
+// chpwdShellHook is appended by shellinit: on every directory change (and
+// once at shell start) it evals `__chpwd-check`, which auto-switches this
+// shell when a .ghswitch.yml or dir= rule applies, and otherwise only warns
+// on an identity mismatch. bash has no chpwd, so PROMPT_COMMAND is guarded
+// on $PWD actually changing — not re-run after every command.
 const chpwdShellHook = `
+_ghswitch_chpwd() {
+  [ "$PWD" = "$_GHSWITCH_LASTPWD" ] && return
+  _GHSWITCH_LASTPWD=$PWD
+  eval "$(command ghswitch __chpwd-check)"
+}
 if [ -n "$ZSH_VERSION" ]; then
-  _ghswitch_chpwd() { command ghswitch __chpwd-check; }
   chpwd_functions+=(_ghswitch_chpwd)
+  _ghswitch_chpwd
 elif [ -n "$BASH_VERSION" ]; then
-  _ghswitch_chpwd() { command ghswitch __chpwd-check; }
   case "$PROMPT_COMMAND" in
     *_ghswitch_chpwd*) ;;
-    *) PROMPT_COMMAND="_ghswitch_chpwd;${PROMPT_COMMAND}" ;;
+    *) PROMPT_COMMAND="_ghswitch_chpwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
   esac
 fi
 `
 
-// __chpwd-check is hidden plumbing invoked by the chpwd hook above. It
-// prints nothing and exits 0 in the common case (no active profile, no
-// repo, or identity already matches) — same mismatch check doctor.go
-// performs, just fired on `cd` instead of on demand.
+// autoTarget picks the profile a directory asks for: the repo's
+// .ghswitch.yml preset first (the repo declares its identity), else the
+// deepest dir= rule. rule identifies which of those matched, so the hook
+// can tell "entered a new area" from "moved within the same one".
+func autoTarget(profiles []config.Profile, cwd, repoRoot, preset string) (p config.Profile, rule string, ok bool) {
+	if preset != "" {
+		for _, p := range profiles {
+			if p.Name == preset {
+				return p, "repo:" + repoRoot, true
+			}
+		}
+	}
+	if p, dir, ok := config.MatchDir(profiles, cwd); ok {
+		return p, "dir:" + dir, true
+	}
+	return config.Profile{}, "", false
+}
+
+// __chpwd-check is hidden plumbing invoked by the hook above; its stdout is
+// eval'd, so it prints only export/unset lines there.
+//
+// A rule applies when you *enter* its area (GHSWITCH_RULE changes), so a
+// manual `ghswitch personal` inside ~/work sticks until you leave ~/work.
 func newHiddenChpwdCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "__chpwd-check",
@@ -37,27 +64,64 @@ func newHiddenChpwdCheckCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !gitutil.InRepo() {
+			profiles, _ := config.Load()
+			cwd, _ := os.Getwd()
+			root, preset := "", ""
+			if gitutil.InRepo() {
+				root = gitutil.RepoRoot()
+				preset = readPreset(root)
+			}
+			target, rule, matched := autoTarget(profiles, cwd, root, preset)
+			if preset != "" && !strings.HasPrefix(rule, "repo:") {
+				warn(".ghswitch.yml asks for profile %q, which isn't configured here — run: ghswitch add", preset)
+			}
+
+			prevRule := os.Getenv("GHSWITCH_RULE")
+			switch {
+			case matched && rule != prevRule:
+				fmt.Printf("export GHSWITCH_RULE=%s\n", shellQuote(rule))
+				if target.Name != os.Getenv("GHSWITCH_ACTIVE_PROFILE") {
+					session.WriteExports(os.Stdout, sessionEnv(target, target.Login()))
+					config.AppendAudit(target.Name)
+					ok("%s  %s", color(colorBold, target.Name), color(colorCyan, "auto · "+tildePath(strings.SplitN(rule, ":", 2)[1])))
+				}
 				return nil
+			case !matched && prevRule != "":
+				fmt.Println("unset GHSWITCH_RULE")
 			}
-			active := os.Getenv("GHSWITCH_ACTIVE_PROFILE")
-			if active == "" {
-				active = config.GetActiveGlobal()
+
+			if root != "" {
+				mismatchWarning()
 			}
-			if active == "" {
-				return nil
-			}
-			p, found := config.Get(active)
-			if !found || p.Email == "" {
-				return nil
-			}
-			curEmail := gitutil.ConfigGet("", "user.email")
-			if curEmail == "" || curEmail == p.Email {
-				return nil
-			}
-			warn("this repo expects a different identity: user.email=%q, active profile %q expects %q", curEmail, active, p.Email)
-			info("  fix: ghswitch local   (or 'ghswitch auto' to detect)")
 			return nil
 		},
 	}
+}
+
+// mismatchWarning flags a repo whose own user.email differs from the
+// active profile's — same check doctor.go performs, fired on cd.
+func mismatchWarning() {
+	active := os.Getenv("GHSWITCH_ACTIVE_PROFILE")
+	if active == "" {
+		active = config.GetActiveGlobal()
+	}
+	p, found := config.Get(active)
+	if !found || p.Email == "" {
+		return
+	}
+	curEmail := gitutil.ConfigGet("--local", "user.email")
+	if curEmail == "" || curEmail == p.Email {
+		return
+	}
+	warn("this repo is pinned to %q, but this shell is %q (%s)", curEmail, active, p.Email)
+	info("  fix: ghswitch local   (or add a .ghswitch.yml / dir= rule so it switches itself)")
+}
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+func tildePath(p string) string {
+	if home, _ := os.UserHomeDir(); home != "" && strings.HasPrefix(p, home) {
+		return "~" + p[len(home):]
+	}
+	return p
 }

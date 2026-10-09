@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,6 +70,16 @@ func newDoctorCmd() *cobra.Command {
 			} else {
 				warn("ssh-agent not running or SSH_AUTH_SOCK not set")
 			}
+
+			if os.Getenv("GHSWITCH_SHELLINIT") != "" {
+				ok("shell integration loaded (per-terminal identity, auto-switch on cd)")
+			} else {
+				errf("shell integration not loaded — switches change global config only")
+				info("  fix: add to %s:  %s", rcFile(), shellinitLine)
+				issues++
+			}
+
+			issues += checkPlaintextTokens()
 
 			active := os.Getenv("GHSWITCH_ACTIVE_PROFILE")
 			scope := "session"
@@ -165,4 +176,43 @@ func newDoctorCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// checkPlaintextTokens offers to move tokens still written in
+// profiles.conf into the OS keychain (Save does the move). Returns the
+// number of issues left over.
+func checkPlaintextTokens() int {
+	profiles, err := config.Load()
+	if err != nil {
+		return 0
+	}
+	var plain []string
+	for _, p := range profiles {
+		if p.GHToken != "" {
+			plain = append(plain, p.Name)
+		}
+		for _, h := range p.Hosts {
+			if h.GHToken != "" {
+				plain = append(plain, p.Name+"@"+h.Host)
+			}
+		}
+	}
+	if len(plain) == 0 {
+		ok("tokens: none stored in plain text")
+		return 0
+	}
+	warn("tokens stored in plain text in profiles.conf: %s", strings.Join(plain, ", "))
+	if !confirm("Move them into the OS keychain now? (Y/n):") {
+		return 1
+	}
+	if err := config.Save(profiles); err != nil {
+		errf("%v", err)
+		return 1
+	}
+	if after, _ := config.Load(); slices.ContainsFunc(after, func(p config.Profile) bool { return p.GHToken != "" }) {
+		errf("no usable keychain on this system — tokens left in profiles.conf (mode 0600)")
+		return 1
+	}
+	ok("tokens moved to the OS keychain")
+	return 0
 }

@@ -745,6 +745,7 @@
           author, <code>SSH</code> key, <code>GPG</code> signature, and <code>gh</code> auth,
           all issued together, all scoped to the shell you're standing in. Carry <code>work</code>
           in one terminal and <code>personal</code> in another; neither one stamps over the other.
+          Mark <code>~/work</code> as work territory and every <code>cd</code> there switches you on its own.
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#entry">Get your copy</a>
@@ -804,6 +805,21 @@
             <span class="box-mark" aria-label="no"></span>
           </div>
           <div class="checklist-row">
+            <span class="item">Switches itself by folder <small><span class="mono">cd ~/work</span> → work, no command</small></span>
+            <span class="box-mark checked" aria-label="yes"></span>
+            <span class="box-mark" aria-label="no"></span>
+          </div>
+          <div class="checklist-row">
+            <span class="item">HTTPS remotes too <small>per-terminal credential helper, not just SSH</small></span>
+            <span class="box-mark checked" aria-label="yes"></span>
+            <span class="box-mark" aria-label="no"></span>
+          </div>
+          <div class="checklist-row">
+            <span class="item">Tokens in your OS keychain <small>never plain text in a dotfile</small></span>
+            <span class="box-mark checked" aria-label="yes"></span>
+            <span class="box-mark checked" aria-label="yes"></span>
+          </div>
+          <div class="checklist-row">
             <span class="item">Per-repo override <small>pin one repo without touching the rest</small></span>
             <span class="box-mark checked" aria-label="yes"></span>
             <span class="box-mark" aria-label="no"></span>
@@ -821,13 +837,13 @@
         <p class="section-sub">A partial record of entries — session isolation, a full git toolkit, and GitHub depth, under one binary.</p>
       </div>
       <div class="stamps">
+        <div class="stamp"><span class="cmd">ghswitch init</span><span class="d">finds your gh accounts + SSH keys, sets everything up</span></div>
+        <div class="stamp"><span class="cmd">cd ~/work</span><span class="d">auto-switches by folder or <span class="mono">.ghswitch.yml</span></span></div>
         <div class="stamp"><span class="cmd">ghswitch work</span><span class="d">switch identity, key & signing — this shell only</span></div>
-        <div class="stamp"><span class="cmd">ghswitch login</span><span class="d">device-flow OAuth, no pasted tokens</span></div>
-        <div class="stamp"><span class="cmd">ghswitch reauthor</span><span class="d">rewrite author on a committed range</span></div>
+        <div class="stamp"><span class="cmd">ghswitch reauthor -n</span><span class="d">preview, then rewrite author on a committed range</span></div>
         <div class="stamp"><span class="cmd">ghswitch local</span><span class="d">pin one repo, untouched global identity</span></div>
-        <div class="stamp"><span class="cmd">ghswitch commit</span><span class="d">conventional commits, fixups, rebase</span></div>
-        <div class="stamp"><span class="cmd">ghswitch pr</span><span class="d">review, inbox, open — without leaving the shell</span></div>
-        <div class="stamp"><span class="cmd">ghswitch sync-all</span><span class="d">multi-repo registry, per-profile stats</span></div>
+        <div class="stamp"><span class="cmd">ghswitch login</span><span class="d">device-flow OAuth, token kept in your keychain</span></div>
+        <div class="stamp"><span class="cmd">ghswitch pr · sync</span><span class="d">optional git + GitHub toolkit, same binary</span></div>
         <div class="stamp"><span class="cmd">ghswitch doctor</span><span class="d">audits keys, auth, signing, mismatches</span></div>
       </div>
 
@@ -907,6 +923,14 @@
       </div>
       <div class="report">
         <div class="report-row">
+          <span class="chk">Shell integration<small>per-terminal identity + auto-switch are loaded — prints the exact rc line if not</small></span>
+          <span class="pass-stamp">PASS</span>
+        </div>
+        <div class="report-row">
+          <span class="chk">Token storage<small>offers to move plain-text tokens into the OS keychain</small></span>
+          <span class="pass-stamp">PASS</span>
+        </div>
+        <div class="report-row">
           <span class="chk">SSH key permissions<small>flags world/group-readable private keys</small></span>
           <span class="pass-stamp">PASS</span>
         </div>
@@ -965,8 +989,9 @@
         </div>
 
         <div class="mrz">
-          <p class="mrz-label">Machine-readable zone — enable session isolation</p>
-          <div class="mrz-line"><b>eval "$(ghswitch shellinit)"</b>  &lt;&lt; add to ~/.zshrc or ~/.bashrc</div>
+          <p class="mrz-label">Machine-readable zone — then run guided setup</p>
+          <div class="mrz-line"><b>ghswitch init</b>  &lt;&lt; detects accounts + keys, creates profiles, enables shell integration</div>
+          <div class="mrz-line"><b>eval "$(ghswitch shellinit)"</b>  &lt;&lt; or add this to ~/.zshrc / ~/.bashrc yourself</div>
         </div>
       </div>
     </div>
@@ -1016,6 +1041,14 @@
           <span class="pass-stamp">SHIPPED</span>
         </div>
         <div class="report-row">
+          <span class="chk">Auto-switch by folder<small><span class="mono" style="font-size:0.85em;">dir=~/work</span> on a profile, or a repo's <span class="mono" style="font-size:0.85em;">.ghswitch.yml</span> — the terminal switches as you <span class="mono" style="font-size:0.85em;">cd</span></small></span>
+          <span class="pass-stamp">SHIPPED</span>
+        </div>
+        <div class="report-row">
+          <span class="chk">HTTPS remotes + keychain tokens<small>built-in credential helper follows each terminal's identity; tokens live in macOS Keychain / Credential Manager / Secret Service</small></span>
+          <span class="pass-stamp">SHIPPED</span>
+        </div>
+        <div class="report-row">
           <span class="chk">Signed team presets<small>verify imported config against a trusted-signers list before merging</small></span>
           <span class="pass-stamp pending-stamp">PENDING</span>
         </div>
@@ -1045,7 +1078,7 @@
             <span>Can I pin one repo to a profile permanently?</span>
             <span class="chev">＋</span>
           </button>
-          <div class="decl-a"><code class="mono">ghswitch local</code> writes a repo-scoped <code class="mono">git config</code> and drops a <code class="mono">.ghswitch.yml</code> — that repo always resolves to the pinned profile regardless of session or global state.</div>
+          <div class="decl-a">Commit a <code class="mono">.ghswitch.yml</code> with <code class="mono">profile: work</code> and every terminal switches to it on <code class="mono">cd</code>. For whole folders, add <code class="mono">dir=~/work</code> to the profile. <code class="mono">ghswitch local</code> pins one repo with a repo-scoped <code class="mono">git config</code> instead.</div>
         </div>
         <div class="decl-item" id="faq-3">
           <button class="decl-q" type="button">
@@ -1061,7 +1094,23 @@
             <span>I already committed under the wrong identity — now what?</span>
             <span class="chev">＋</span>
           </button>
-          <div class="decl-a"><code class="mono">ghswitch reauthor</code> rewrites author/committer on a commit range to match the currently active profile, in one command.</div>
+          <div class="decl-a"><code class="mono">ghswitch reauthor -n</code> shows each commit's old → new author; drop the <code class="mono">-n</code> to rewrite the range to the active profile. It prints the exact command to undo it.</div>
+        </div>
+        <div class="decl-item" id="faq-5">
+          <button class="decl-q" type="button">
+            <span class="no mono">05</span>
+            <span>My remotes are HTTPS, not SSH. Does it still work?</span>
+            <span class="chev">＋</span>
+          </button>
+          <div class="decl-a">Yes. ghswitch installs itself as git's credential helper for your GitHub host, and answers with the token of whichever profile <em>this</em> terminal is using — so HTTPS pushes follow the switch just like SSH ones.</div>
+        </div>
+        <div class="decl-item" id="faq-6">
+          <button class="decl-q" type="button">
+            <span class="no mono">06</span>
+            <span>Where are my tokens stored?</span>
+            <span class="chev">＋</span>
+          </button>
+          <div class="decl-a">In your OS keychain (macOS Keychain, Windows Credential Manager, or Secret Service on Linux) — <code class="mono">profiles.conf</code> only holds <code class="mono">gh_token=keyring</code>. On a machine with no keychain it falls back to the 0600 config file, and <code class="mono">ghswitch doctor</code> tells you.</div>
         </div>
       </div>
     </div>

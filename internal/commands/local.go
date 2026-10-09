@@ -16,7 +16,7 @@ func newLocalCmd() *cobra.Command {
 				return err
 			}
 			if len(profiles) == 0 {
-				warn("No profiles yet. Run: ghswitch add")
+				warn("No profiles yet. Run: ghswitch init")
 				return nil
 			}
 			if !gitutil.InRepo() {

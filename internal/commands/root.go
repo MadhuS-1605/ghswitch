@@ -15,7 +15,7 @@ func Root(version string) *cobra.Command {
 	var ttl time.Duration
 	root := &cobra.Command{
 		Use:     "ghswitch",
-		Short:   "GitHub-aware git toolkit — switch identities, manage branches, commit, sync, and open PRs",
+		Short:   "Never commit as the wrong GitHub account — per-terminal identity that switches itself by folder",
 		Version: version,
 		Args:    cobra.ArbitraryArgs,
 		// Errors here are almost always "profile not found" / git command
@@ -45,77 +45,42 @@ func Root(version string) *cobra.Command {
 	}
 	root.Flags().DurationVar(&ttl, "ttl", 0, "warn once this long has passed without a re-switch (e.g. 4h)")
 
-	root.AddCommand(
-		newSwitchCmd(),
-		newBackCmd(),
-		newAuditCmd(),
-		newGendocsCmd(),
-		newAddCmd(),
-		newAddHostCmd(),
-		newListCmd(),
-		newDeleteCmd(),
-		newLocalCmd(),
-		newStatusCmd(),
-		newUnsetCmd(),
-		newEditCmd(),
-		newAutoCmd(),
-		newDoctorCmd(),
-		newShellinitCmd(),
-		newHiddenIsProfileCmd(),
-		newPromptCmd(),
-		newHiddenChpwdCheckCmd(),
-		// Git toolkit (Phase 4)
-		newBranchCmd(),
-		newNewBranchCmd(),
-		newRenameCmd(),
-		newCleanCmd(),
-		newFreshCmd(),
-		newRecentCmd(),
-		newCommitCmd(),
-		newAmendCmd(),
-		newUndoCmd(),
-		newConventionalCommitCmd(),
-		newWipCmd(),
-		newWipPopCmd(),
-		newFixupCmd(),
-		newSyncCmd(),
-		newPullCmd(),
-		newPushCmd(),
-		newFetchCmd(),
-		newRepoInfoCmd(),
-		newLogCmd(),
-		newDiffCmd(),
-		newWhoCmd(),
-		newRevertCmd(),
-		newCherryPickCmd(),
-		newRebaseCmd(),
-		newStashCmd(),
-		newTagCmd(),
-		newWorktreeCmd(),
-		newConflictCmd(),
-		// GitHub integration (Phase 5)
-		newPRCmd(),
-		newPRsCmd(),
-		newPRCheckoutCmd(),
-		newPRStatusCmd(),
-		newReviewCmd(),
-		newIssuesCmd(),
-		newInboxCmd(),
-		newOpenCmd(),
-		newLoginCmd(),
-		newRotateCmd(),
-		newReleaseCmd(),
-		// New + updated for session isolation (Phase 6)
-		newReauthorCmd(),
-		newHooksInstallCmd(),
-		// Team features (Phase 7)
-		newBootstrapCmd(),
-		newExportCmd(),
-		newImportCmd(),
-		newReposCmd(),
-		newSyncAllCmd(),
-		newStatsCmd(),
-	)
+	// Help leads with identity — the reason ghswitch exists — and files the
+	// git/GitHub conveniences under their own headings.
+	groups := []struct {
+		id, title string
+		cmds      []*cobra.Command
+	}{
+		{"identity", "Identity:", []*cobra.Command{
+			newInitCmd(), newSwitchCmd(), newBackCmd(), newStatusCmd(), newListCmd(),
+			newAddCmd(), newAddHostCmd(), newLoginCmd(), newRotateCmd(), newEditCmd(), newDeleteCmd(),
+			newLocalCmd(), newAutoCmd(), newUnsetCmd(), newDoctorCmd(), newReauthorCmd(),
+			newHooksInstallCmd(), newAuditCmd(), newShellinitCmd(), newPromptCmd(),
+		}},
+		{"git", "Git toolkit:", []*cobra.Command{
+			newBranchCmd(), newNewBranchCmd(), newRenameCmd(), newCleanCmd(), newFreshCmd(), newRecentCmd(),
+			newCommitCmd(), newAmendCmd(), newUndoCmd(), newConventionalCommitCmd(), newWipCmd(), newWipPopCmd(),
+			newFixupCmd(), newSyncCmd(), newPullCmd(), newPushCmd(), newFetchCmd(), newRepoInfoCmd(), newLogCmd(),
+			newDiffCmd(), newWhoCmd(), newRevertCmd(), newCherryPickCmd(), newRebaseCmd(), newStashCmd(),
+			newTagCmd(), newWorktreeCmd(), newConflictCmd(),
+		}},
+		{"github", "GitHub:", []*cobra.Command{
+			newPRCmd(), newPRsCmd(), newPRCheckoutCmd(), newPRStatusCmd(), newReviewCmd(),
+			newIssuesCmd(), newInboxCmd(), newOpenCmd(), newReleaseCmd(),
+		}},
+		{"team", "Team & multi-repo:", []*cobra.Command{
+			newBootstrapCmd(), newExportCmd(), newImportCmd(), newReposCmd(), newSyncAllCmd(), newStatsCmd(),
+		}},
+	}
+	cobra.EnableCommandSorting = false
+	for _, g := range groups {
+		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
+		for _, c := range g.cmds {
+			c.GroupID = g.id
+			root.AddCommand(c)
+		}
+	}
+	root.AddCommand(newGendocsCmd(), newHiddenIsProfileCmd(), newHiddenChpwdCheckCmd(), newHiddenCredentialCmd())
 	return root
 }
 

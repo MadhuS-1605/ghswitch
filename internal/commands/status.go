@@ -77,7 +77,7 @@ func newUnsetCmd() *cobra.Command {
 					host = p.GHHost
 				}
 			}
-			_ = gitutil.ConfigUnset("--global", fmt.Sprintf("credential.https://%s.helper", host))
+			_, _ = gitutil.Run("config", "--global", "--unset-all", fmt.Sprintf("credential.https://%s.helper", host))
 			_ = config.SetActiveGlobal("")
 			ok("Global identity cleared.")
 			info("Session vars (if any) are unaffected — open a new shell or run: eval \"$(ghswitch shellinit --clear)\"")

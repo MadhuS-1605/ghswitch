@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -45,19 +46,57 @@ func applyGlobal(p config.Profile, ttl time.Duration) {
 	_ = config.SetActiveGlobal(p.Name)
 	config.AppendAudit(p.Name)
 
-	env := session.EnvFor(p)
+	summary(p, signing, ghUser)
+	if !stdoutEvaluated() {
+		shellinitHint(p.Name)
+		return
+	}
+	env := sessionEnv(p, ghUser)
 	if ttl > 0 {
 		expires := time.Now().Add(ttl).Unix()
 		env["GHSWITCH_EXPIRES"] = strconv.FormatInt(expires, 10)
 	}
-	// GH_TOKEN pins gh (and gh's git credential helper) to this profile's
-	// account in this shell only — `gh auth switch` alone is global.
+	session.WriteExports(os.Stdout, env)
+}
+
+// sessionEnv is the per-shell env for p. GH_TOKEN pins gh to this
+// profile's account in this shell only — `gh auth switch` alone is global.
+func sessionEnv(p config.Profile, ghUser string) map[string]string {
+	env := session.EnvFor(p)
 	if token := ghToken(p, ghUser); token != "" {
 		env["GH_TOKEN"] = token
 	}
-	session.WriteExports(os.Stdout, env)
+	return env
+}
 
-	summary(p, signing, ghUser)
+// stdoutEvaluated reports whether stdout is captured — i.e. the shellinit
+// wrapper is eval'ing it. On a bare terminal, export lines are just noise.
+func stdoutEvaluated() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice == 0
+}
+
+// shellinitHint explains why this terminal didn't switch: either shell
+// integration isn't loaded, or this command isn't one the wrapper evals.
+func shellinitHint(name string) {
+	if os.Getenv("GHSWITCH_SHELLINIT") != "" {
+		info("applied to global git config — to switch this terminal too: ghswitch %s", name)
+		return
+	}
+	warn("shell integration not loaded, so only global git config changed (every terminal shares it)")
+	info("for per-terminal identity + auto-switch by folder, add to %s:  %s", rcFile(), shellinitLine)
+}
+
+const shellinitLine = `eval "$(ghswitch shellinit)"`
+
+func rcFile() string {
+	switch filepath.Base(os.Getenv("SHELL")) {
+	case "zsh":
+		return "~/.zshrc"
+	case "bash":
+		return "~/.bashrc"
+	}
+	return "your shell rc"
 }
 
 // applyLocal pins a profile to the current repo only, via `git config
@@ -157,14 +196,13 @@ func ghHost(p config.Profile) string {
 // ("" if gh is missing or the switch failed — with a warning saying why).
 func applyGH(p config.Profile) string {
 	host := ghHost(p)
-	if p.GHToken != "" {
-		helper := fmt.Sprintf(`!f() { echo "username=git"; echo "password=%s"; }; f`, p.GHToken)
-		_ = gitutil.ConfigSet("--global", fmt.Sprintf("credential.https://%s.helper", host), helper)
+	installCredentialHelper(host)
+	if token := p.Token(); token != "" {
 		if !hasCmd("gh") {
 			return ""
 		}
 		cmd := ghCmd("auth", "login", "--with-token", "--hostname", host)
-		cmd.Stdin = strings.NewReader(p.GHToken)
+		cmd.Stdin = strings.NewReader(token)
 		if cmd.Run() != nil {
 			warn("gh rejected the token for %s — run: ghswitch rotate %s", p.Name, p.Name)
 			return ""
@@ -188,8 +226,8 @@ func applyGH(p config.Profile) string {
 
 // ghToken returns the token gh should use for p in this shell.
 func ghToken(p config.Profile, ghUser string) string {
-	if p.GHToken != "" {
-		return p.GHToken
+	if t := p.Token(); t != "" {
+		return t
 	}
 	if ghUser == "" {
 		return ""

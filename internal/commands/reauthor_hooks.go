@@ -16,7 +16,8 @@ import (
 // identity via `git rebase --exec ... --reset-author`, the standard git
 // mechanism for this (no custom history surgery needed).
 func newReauthorCmd() *cobra.Command {
-	return &cobra.Command{
+	var dryRun bool
+	cmd := &cobra.Command{
 		Use:   "reauthor",
 		Short: "Rewrite author/committer identity on past commits to match the active profile",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,12 +65,34 @@ func newReauthorCmd() *cobra.Command {
 				base = gitutil.DefaultBranch()
 			}
 
-			out, _ := gitutil.Run("log", "--oneline", base+"..HEAD")
+			out, _ := gitutil.Run("log", "--format=%h\t%an <%ae>\t%s", base+"..HEAD")
 			if out == "" {
 				warn("No commits in range %s..HEAD.", base)
 				return nil
 			}
-			info("Commits to reauthor:\n%s", out)
+			want := fmt.Sprintf("%s <%s>", p.GitName, p.Email)
+			changes, others := 0, map[string]bool{}
+			for _, line := range strings.Split(out, "\n") {
+				f := strings.SplitN(line, "\t", 3)
+				if len(f) < 3 {
+					continue
+				}
+				if f[1] == want {
+					fmt.Fprintf(os.Stderr, "  %s  %s  %s\n", color(colorYellow, f[0]), "unchanged", f[2])
+					continue
+				}
+				changes++
+				others[f[1]] = true
+				fmt.Fprintf(os.Stderr, "  %s  %s → %s  %s\n", color(colorYellow, f[0]), color(colorRed, f[1]), color(colorGreen, want), f[2])
+			}
+			if len(others) > 1 {
+				warn("this range has commits from %d different authors — all of them will become %s", len(others), want)
+			}
+			if dryRun {
+				info("dry run: %d commit(s) would be rewritten, nothing changed", changes)
+				return nil
+			}
+			oldHead, _ := gitutil.Run("rev-parse", "--short", "HEAD")
 			if !confirm(fmt.Sprintf("Rewrite these as %s <%s>? This rewrites history — force-push will be needed if already pushed. (y/N):", p.GitName, p.Email)) {
 				info("Cancelled.")
 				return nil
@@ -84,9 +107,12 @@ func newReauthorCmd() *cobra.Command {
 				return nil
 			}
 			ok("Reauthored. Force-push with --force-with-lease if this branch was already pushed.")
+			info("undo: git reset --hard %s", oldHead)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would be rewritten without changing anything")
+	return cmd
 }
 
 func newHooksInstallCmd() *cobra.Command {

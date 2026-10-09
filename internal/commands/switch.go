@@ -41,7 +41,7 @@ func switchInteractive() error {
 		return err
 	}
 	if len(profiles) == 0 {
-		warn("No profiles yet. Run: ghswitch add")
+		warn("No profiles yet. Run: ghswitch init")
 		return nil
 	}
 	names := make([]string, len(profiles))

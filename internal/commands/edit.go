@@ -39,7 +39,8 @@ func newEditCmd() *cobra.Command {
 // that gives every terminal its own isolated identity. Everything else
 // passes straight through, untouched, to avoid evaling arbitrary command
 // output as shell code.
-const shellinitScript = `ghswitch() {
+const shellinitScript = `export GHSWITCH_SHELLINIT=1
+ghswitch() {
   if [ $# -eq 0 ]; then
     eval "$(command ghswitch switch)"
     return

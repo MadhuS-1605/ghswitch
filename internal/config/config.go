@@ -1,5 +1,6 @@
 // Package config reads and writes ~/.config/ghswitch/profiles.conf, the same
 // INI-style format ghswitch.sh has always used — no migration needed.
+// Tokens move into the OS keychain on the next Save (gh_token=keyring).
 package config
 
 import (
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/zalando/go-keyring"
 )
 
 // Profile mirrors one [name] section of profiles.conf.
@@ -21,7 +24,10 @@ type Profile struct {
 	GHToken string
 	GHHost  string
 	GHUser  string     // GitHub login for `gh auth switch`; defaults to GitName
+	Dirs    []string   // folders (and everything under them) that auto-switch to this profile
 	Hosts   []HostCred // additional hosts for this profile (multi-host), from [name@host] sections
+
+	tokenKey string // keychain account holding the token when GHToken was stored there
 }
 
 // HostCred overrides SSH key / GPG key / token for one additional host on a
@@ -32,6 +38,8 @@ type HostCred struct {
 	SSHKey  string
 	GPGKey  string
 	GHToken string
+
+	tokenKey string
 }
 
 // ForHost returns a copy of p with SSH/GPG/token overridden by the matching
@@ -54,12 +62,66 @@ func (p Profile) ForHost(host string) Profile {
 		if h.GPGKey != "" {
 			out.GPGKey = h.GPGKey
 		}
-		if h.GHToken != "" {
-			out.GHToken = h.GHToken
+		if h.GHToken != "" || h.tokenKey != "" {
+			out.GHToken, out.tokenKey = h.GHToken, h.tokenKey
 		}
 		return out
 	}
 	return p
+}
+
+// keyringService namespaces ghswitch's entries in the OS keychain
+// (macOS Keychain, Windows Credential Manager, Secret Service on Linux).
+const keyringService = "ghswitch"
+
+// keyringMarker replaces the token in profiles.conf once it lives in the
+// keychain. No real GitHub token can equal it.
+const keyringMarker = "keyring"
+
+// Token returns p's GitHub token, reading the keychain only when asked —
+// Load runs on every cd (chpwd hook), so it must never touch the keychain.
+func (p Profile) Token() string {
+	if p.GHToken != "" || p.tokenKey == "" {
+		return p.GHToken
+	}
+	t, _ := keyring.Get(keyringService, p.tokenKey)
+	return t
+}
+
+// HasToken reports whether a token is stored, without reading it.
+func (p Profile) HasToken() bool { return p.GHToken != "" || p.tokenKey != "" }
+
+// storeToken moves a plaintext token into the keychain under account,
+// returning what profiles.conf should hold: the marker, or the token itself
+// when no keychain is available (headless Linux, CI) — file stays 0600.
+func storeToken(account, token, existingKey string) string {
+	if token == "" {
+		if existingKey != "" {
+			return keyringMarker
+		}
+		return ""
+	}
+	if keyring.Set(keyringService, account, token) != nil {
+		return token
+	}
+	return keyringMarker
+}
+
+// MatchDir returns the profile whose dir= rule is the deepest ancestor of
+// (or equal to) cwd, plus that rule's expanded path.
+func MatchDir(profiles []Profile, cwd string) (Profile, string, bool) {
+	cwd = filepath.Clean(cwd)
+	var best Profile
+	bestDir := ""
+	for _, p := range profiles {
+		for _, d := range p.Dirs {
+			d = filepath.Clean(ExpandSSHKey(d))
+			if (cwd == d || strings.HasPrefix(cwd, d+string(filepath.Separator))) && len(d) > len(bestDir) {
+				best, bestDir = p, d
+			}
+		}
+	}
+	return best, bestDir, bestDir != ""
 }
 
 // Login is the GitHub account name gh knows this profile by.
@@ -126,6 +188,7 @@ func Load() ([]Profile, error) {
 	var profiles []Profile
 	var cur *Profile      // current [name] section
 	var curHost *HostCred // current [name@host] sub-section, if any
+	var curHostKey string // its keychain account, "name@host"
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -135,7 +198,7 @@ func Load() ([]Profile, error) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			inner := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
 			if base, host, ok := strings.Cut(inner, "@"); ok {
-				curHost = nil
+				curHost, curHostKey = nil, inner
 				for i := range profiles {
 					if profiles[i].Name == base {
 						profiles[i].Hosts = append(profiles[i].Hosts, HostCred{Host: host})
@@ -162,7 +225,11 @@ func Load() ([]Profile, error) {
 			case "gpg_key":
 				curHost.GPGKey = val
 			case "gh_token":
-				curHost.GHToken = val
+				if val == keyringMarker {
+					curHost.tokenKey = curHostKey
+				} else {
+					curHost.GHToken = val
+				}
 			}
 			continue
 		}
@@ -179,7 +246,13 @@ func Load() ([]Profile, error) {
 		case "gpg_key":
 			cur.GPGKey = val
 		case "gh_token":
-			cur.GHToken = val
+			if val == keyringMarker {
+				cur.tokenKey = cur.Name
+			} else {
+				cur.GHToken = val
+			}
+		case "dir":
+			cur.Dirs = append(cur.Dirs, val)
 		case "gh_host":
 			cur.GHHost = val
 		case "gh_user":
@@ -221,11 +294,14 @@ func Save(profiles []Profile) error {
 		if p.GPGKey != "" {
 			fmt.Fprintf(&b, "gpg_key=%s\n", p.GPGKey)
 		}
-		if p.GHToken != "" {
-			fmt.Fprintf(&b, "gh_token=%s\n", p.GHToken)
+		if t := storeToken(p.Name, p.GHToken, p.tokenKey); t != "" {
+			fmt.Fprintf(&b, "gh_token=%s\n", t)
 		}
 		if p.GHUser != "" {
 			fmt.Fprintf(&b, "gh_user=%s\n", p.GHUser)
+		}
+		for _, d := range p.Dirs {
+			fmt.Fprintf(&b, "dir=%s\n", d)
 		}
 		host := p.GHHost
 		if host == "" {
@@ -241,8 +317,8 @@ func Save(profiles []Profile) error {
 			if h.GPGKey != "" {
 				fmt.Fprintf(&b, "gpg_key=%s\n", h.GPGKey)
 			}
-			if h.GHToken != "" {
-				fmt.Fprintf(&b, "gh_token=%s\n", h.GHToken)
+			if t := storeToken(p.Name+"@"+h.Host, h.GHToken, h.tokenKey); t != "" {
+				fmt.Fprintf(&b, "gh_token=%s\n", t)
 			}
 			b.WriteString("\n")
 		}
@@ -273,6 +349,11 @@ func Delete(name string) error {
 	for _, p := range profiles {
 		if p.Name != name {
 			out = append(out, p)
+			continue
+		}
+		_ = keyring.Delete(keyringService, p.Name)
+		for _, h := range p.Hosts {
+			_ = keyring.Delete(keyringService, p.Name+"@"+h.Host)
 		}
 	}
 	return Save(out)

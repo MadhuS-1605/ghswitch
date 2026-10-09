@@ -26,6 +26,8 @@ var Keys = []string{
 	"GIT_CONFIG_VALUE_0",
 	"GIT_CONFIG_KEY_1",
 	"GIT_CONFIG_VALUE_1",
+	"GIT_CONFIG_KEY_2",
+	"GIT_CONFIG_VALUE_2",
 	"GH_TOKEN",
 	"GHSWITCH_ACTIVE_PROFILE",
 	"GHSWITCH_EXPIRES",
@@ -51,14 +53,21 @@ func EnvFor(p config.Profile) map[string]string {
 		expanded := config.ExpandSSHKey(p.SSHKey)
 		env["GIT_SSH_COMMAND"] = fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes", expanded)
 	}
-	// Signing key has no dedicated env var; GIT_CONFIG_COUNT/KEY_n/VALUE_n
-	// (git ≥ 2.31) injects config for this shell only.
+	// Signing has no dedicated env var; GIT_CONFIG_COUNT/KEY_n/VALUE_n
+	// (git ≥ 2.31) injects config for this shell only. A profile without a
+	// key turns signing off, so a cd-triggered switch (which never touches
+	// global config) can't sign with the previous profile's key.
+	cfg := [][2]string{{"commit.gpgSign", "false"}}
 	if format, key := p.SigningKey(); key != "" {
-		env["GIT_CONFIG_COUNT"] = "2"
-		env["GIT_CONFIG_KEY_0"] = "user.signingKey"
-		env["GIT_CONFIG_VALUE_0"] = key
-		env["GIT_CONFIG_KEY_1"] = "gpg.format"
-		env["GIT_CONFIG_VALUE_1"] = format
+		cfg = [][2]string{{"user.signingKey", key}, {"gpg.format", format}}
+		if format == "openpgp" {
+			cfg = append(cfg, [2]string{"commit.gpgSign", "true"})
+		}
+	}
+	env["GIT_CONFIG_COUNT"] = fmt.Sprint(len(cfg))
+	for i, kv := range cfg {
+		env[fmt.Sprintf("GIT_CONFIG_KEY_%d", i)] = kv[0]
+		env[fmt.Sprintf("GIT_CONFIG_VALUE_%d", i)] = kv[1]
 	}
 	return env
 }

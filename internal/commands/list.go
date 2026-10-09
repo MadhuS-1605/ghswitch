@@ -25,7 +25,7 @@ func newListCmd() *cobra.Command {
 
 			section("Configured profiles")
 			if len(profiles) == 0 {
-				warn("No profiles yet. Run: ghswitch add")
+				warn("No profiles yet. Run: ghswitch init")
 				return nil
 			}
 			for _, p := range profiles {
@@ -42,7 +42,7 @@ func newListCmd() *cobra.Command {
 				if p.GPGKey != "" {
 					fmt.Fprintf(os.Stderr, "    gpg   : %s\n", p.GPGKey)
 				}
-				if p.GHToken != "" {
+				if p.HasToken() {
 					fmt.Fprintf(os.Stderr, "    token : [configured]\n")
 				}
 				if p.GHHost != "" {

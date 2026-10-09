@@ -31,8 +31,11 @@ parallel, with zero risk of one clobbering the other.
 
 ## Features
 
+- **Auto-switch by folder** — `dir=~/work` on a profile and every `cd` into `~/work/**` switches that terminal; a repo's `.ghswitch.yml` overrides it
 - **Session isolation** — `ghswitch work` in one terminal and `ghswitch personal` in another are fully independent; each shell resolves its own identity via exported env vars, not a shared global file
 - **One switch, everything moves** — git identity, SSH key, GPG signing, and `gh` CLI auth all swap together
+- **SSH *and* HTTPS remotes** — a built-in git credential helper hands each terminal its own account's token
+- **Tokens in your OS keychain** — macOS Keychain / Windows Credential Manager / Secret Service, never plain text (falls back to a 0600 file only when no keychain exists)
 - **Device-flow login** — `ghswitch login` authenticates through GitHub's OAuth device flow (same mechanism `gh auth login` uses), no manual token pasting required
 - **`reauthor`** — already committed under the wrong identity? Rewrite author/committer on a commit range to match the active profile in one command
 - **Arrow-key + mouse TUI** — every menu (profiles, branches, stashes, PRs) supports both
@@ -67,19 +70,20 @@ go install github.com/MadhuS-1605/ghswitch/cmd/ghswitch@latest
 irm https://raw.githubusercontent.com/MadhuS-1605/ghswitch/main/scripts/install.ps1 | iex
 ```
 
-Then enable session isolation by adding this to your shell rc (`~/.zshrc`, `~/.bashrc`):
+Then run the guided setup — it finds your `gh` accounts and SSH keys, creates a profile per account, and adds shell integration to your rc file:
 ```bash
-eval "$(ghswitch shellinit)"
+ghswitch init
 ```
 
-> **Important:** Use `git@github.com:...` (SSH) remote URLs, not HTTPS, so ghswitch's SSH key management takes effect.
+(Manual alternative: add `eval "$(ghswitch shellinit)"` to `~/.zshrc` / `~/.bashrc`.)
 
 ---
 
 ## Quick start
 
 ```bash
-ghswitch login work        # device-flow login, saves token to profile "work"
+ghswitch init              # detect accounts + keys, create profiles, enable shell integration
+ghswitch login work        # or: device-flow login, saves token to profile "work"
 ghswitch add                # or add a profile manually (name, email, SSH key, GPG key...)
 ghswitch list                # see all profiles
 ghswitch                     # launch the interactive switcher
@@ -113,6 +117,7 @@ gitconfig, but the env vars are the source of truth.
 
 | Command | Description |
 |---|---|
+| `ghswitch init` | Guided first-run setup |
 | `ghswitch` | Interactive switcher (arrow keys + mouse) |
 | `ghswitch <name>` / `switch <name>` | Switch directly, session-scoped |
 | `ghswitch <name> --ttl 4h` | Switch with a time-to-live; warns (doesn't silently revert) once it passes |
@@ -130,7 +135,7 @@ gitconfig, but the env vars are the source of truth.
 | `ghswitch edit` | Open `profiles.conf` in `$EDITOR` |
 | `ghswitch delete` / `rm` | Remove a profile |
 | `ghswitch shellinit` | Emit the shell function that enables session isolation |
-| `ghswitch reauthor` | Rewrite author/committer on past commits to match the active profile |
+| `ghswitch reauthor [-n]` | Rewrite author/committer on past commits to match the active profile (`-n` = dry run: shows old → new author per commit) |
 | `ghswitch doctor` | Audit SSH keys, `gh` auth + token expiry, GPG keyring, identity mismatches |
 | `ghswitch rotate [profile]` | Open token settings page, paste new token, re-auth `gh` |
 | `ghswitch hooks-install` | Install a pre-commit guard that blocks commits with the wrong identity |
@@ -203,14 +208,27 @@ gitconfig, but the env vars are the source of truth.
 | `ghswitch sync-all` | Sync every registered repo |
 | `ghswitch stats [days]` | Per-profile commit counts in the current repo |
 
+### Auto-switch by folder
+
+```ini
+[work]
+name=Jane Doe
+email=jane@company.com
+dir=~/work          # repeatable
+```
+
+With shell integration loaded, `cd ~/work/anything` switches that terminal
+to `work`. The deepest matching rule wins. A manual `ghswitch personal`
+inside `~/work` sticks until you leave `~/work`.
+
 ### Per-repo preset (`.ghswitch.yml`)
 
 ```yaml
 profile: client-acme
 ```
 
-`ghswitch auto` applies that profile automatically — no email-matching
-needed. The repo declares its identity instead of you remembering it.
+Entering the repo switches the terminal to that profile (it beats `dir=`
+rules); `ghswitch auto` pins it with `git config --local` instead. The repo declares its identity instead of you remembering it.
 
 ---
 
@@ -225,8 +243,9 @@ name=Jane Doe
 email=jane@company.com
 ssh_key=~/.ssh/id_ed25519_work
 gpg_key=ABCD1234
-gh_token=ghp_...
+gh_token=keyring    # the token itself lives in your OS keychain
 gh_host=github.com
+dir=~/work
 
 [personal]
 name=Jane Doe
@@ -236,7 +255,9 @@ gh_host=github.com
 ```
 
 All fields except `name` and `email` are optional. `gh_token` is populated
-automatically by `ghswitch login`.
+automatically by `ghswitch login`; tokens are moved into the OS keychain on
+save (`ghswitch doctor` offers to migrate any older plain-text ones). Set
+`gh_user=<login>` when your GitHub login differs from `name`.
 
 ---
 
