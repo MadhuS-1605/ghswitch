@@ -106,7 +106,15 @@ func mismatchWarning() {
 		active = config.GetActiveGlobal()
 	}
 	p, found := config.Get(active)
-	if !found || p.Email == "" {
+	if !found {
+		return
+	}
+	if owner := ownerProfile(active); owner != "" {
+		warn("this repo belongs to %s, but this shell is %q (%s)", gitutil.RemoteOwner(), active, p.Login())
+		info("  fix: ghswitch %s   ·   make it automatic: echo 'profile: %s' > .ghswitch.yml  (or dir= in the profile)", owner, owner)
+		return
+	}
+	if p.Email == "" {
 		return
 	}
 	curEmail := gitutil.ConfigGet("--local", "user.email")
@@ -124,4 +132,28 @@ func tildePath(p string) string {
 		return "~" + p[len(home):]
 	}
 	return p
+}
+
+// ownerProfile returns the profile whose GitHub login owns this repo's
+// origin, when that isn't the active one — the "personal repo, work
+// account" case an email check can't see. Org-owned repos match nothing.
+func ownerProfile(active string) string {
+	owner := gitutil.RemoteOwner()
+	if owner == "" {
+		return ""
+	}
+	profiles, _ := config.Load()
+	return ownerProfileIn(profiles, owner, active)
+}
+
+func ownerProfileIn(profiles []config.Profile, owner, active string) string {
+	for _, p := range profiles {
+		if strings.EqualFold(p.Login(), owner) {
+			if p.Name == active {
+				return ""
+			}
+			return p.Name
+		}
+	}
+	return ""
 }

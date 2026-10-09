@@ -46,3 +46,23 @@ func TestProfileServes(t *testing.T) {
 		t.Fatal("empty gh_host means github.com")
 	}
 }
+
+func TestOwnerProfile(t *testing.T) {
+	profiles := []config.Profile{
+		{Name: "tachi", GitName: "gopher-phoenix"},
+		{Name: "personal", GitName: "MadhuS-1605"},
+		{Name: "work", GitName: "Jane", GHUser: "jane-corp"},
+	}
+	cases := []struct{ owner, active, want string }{
+		{"MadhuS-1605", "tachi", "personal"}, // wrong account → name the right one
+		{"madhus-1605", "tachi", "personal"}, // GitHub logins are case-insensitive
+		{"MadhuS-1605", "personal", ""},      // already right
+		{"jane-corp", "personal", "work"},    // gh_user beats name
+		{"some-org", "tachi", ""},            // org repo: no opinion
+	}
+	for _, c := range cases {
+		if got := ownerProfileIn(profiles, c.owner, c.active); got != c.want {
+			t.Errorf("owner %s active %s: got %q want %q", c.owner, c.active, got, c.want)
+		}
+	}
+}

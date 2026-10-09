@@ -41,27 +41,44 @@ func RepoRoot() string {
 // SSH ("git@host:owner/repo.git") and HTTPS ("https://host/owner/repo.git")
 // forms. Returns "" if there's no origin remote or the URL doesn't parse.
 func RemoteHost() string {
-	url, err := Run("remote", "get-url", "origin")
-	if err != nil || url == "" {
-		return ""
-	}
-	if strings.HasPrefix(url, "git@") {
-		rest := strings.TrimPrefix(url, "git@")
-		host, _, ok := strings.Cut(rest, ":")
+	host, _ := ParseRemote(originURL())
+	return host
+}
+
+// RemoteOwner is the user/org that owns the origin repo ("" if unknown).
+func RemoteOwner() string {
+	_, owner := ParseRemote(originURL())
+	return owner
+}
+
+func originURL() string {
+	url, _ := Run("remote", "get-url", "origin")
+	return url
+}
+
+// ParseRemote splits a git remote URL into host and owner.
+func ParseRemote(url string) (host, owner string) {
+	var path string
+	switch {
+	case strings.HasPrefix(url, "git@"):
+		var ok bool
+		host, path, ok = strings.Cut(strings.TrimPrefix(url, "git@"), ":")
 		if !ok {
-			return ""
+			return "", ""
 		}
-		return host
-	}
-	for _, prefix := range []string{"https://", "http://", "ssh://git@", "ssh://"} {
-		if strings.HasPrefix(url, prefix) {
-			rest := strings.TrimPrefix(url, prefix)
-			host, _, _ := strings.Cut(rest, "/")
-			host, _, _ = strings.Cut(host, "@")
-			return host
+	default:
+		for _, prefix := range []string{"https://", "http://", "ssh://"} {
+			if strings.HasPrefix(url, prefix) {
+				host, path, _ = strings.Cut(strings.TrimPrefix(url, prefix), "/")
+				if _, h, ok := strings.Cut(host, "@"); ok {
+					host = h
+				}
+				break
+			}
 		}
 	}
-	return ""
+	owner, _, _ = strings.Cut(path, "/")
+	return host, owner
 }
 
 // UpstreamOf returns the upstream ref for the given ref ("HEAD" if empty),

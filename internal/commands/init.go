@@ -194,6 +194,17 @@ func firstNonEmpty(s ...string) string {
 	return ""
 }
 
+// rcHasShellinit reports whether the user's rc file already loads ghswitch.
+func rcHasShellinit() bool {
+	rc := rcFile()
+	if !strings.HasPrefix(rc, "~/") {
+		return false
+	}
+	home, _ := os.UserHomeDir()
+	b, err := os.ReadFile(filepath.Join(home, rc[2:]))
+	return err == nil && strings.Contains(string(b), "ghswitch shellinit")
+}
+
 // setupShell appends the shellinit line to the user's rc file, with consent.
 func setupShell() {
 	if os.Getenv("GHSWITCH_SHELLINIT") != "" {

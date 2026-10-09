@@ -62,8 +62,8 @@ func newDoctorCmd() *cobra.Command {
 			}
 			if hasCmd("gpg") {
 				ok("gpg installed")
-			} else {
-				warn("gpg missing — signed commits disabled")
+			} else if profiles, _ := config.Load(); slices.ContainsFunc(profiles, func(p config.Profile) bool { return p.GPGKey != "" }) {
+				warn("gpg missing — profiles with gpg_key can't sign (SSH signing still works)")
 			}
 			if hasCmd("ssh-agent") && os.Getenv("SSH_AUTH_SOCK") != "" {
 				ok("ssh-agent active (socket: %s)", os.Getenv("SSH_AUTH_SOCK"))
@@ -73,6 +73,9 @@ func newDoctorCmd() *cobra.Command {
 
 			if os.Getenv("GHSWITCH_SHELLINIT") != "" {
 				ok("shell integration loaded (per-terminal identity, auto-switch on cd)")
+			} else if rcHasShellinit() {
+				warn("shell integration is in %s, but this shell started before it (or before upgrading)", rcFile())
+				info("  fix: exec $SHELL   (or open a new terminal)")
 			} else {
 				errf("shell integration not loaded — switches change global config only")
 				info("  fix: add to %s:  %s", rcFile(), shellinitLine)
@@ -159,7 +162,11 @@ func newDoctorCmd() *cobra.Command {
 				curEmail := gitutil.ConfigGet("", "user.email")
 				info("Remote     : %s", orNotSet(remote))
 				info("user.email : %s", orNotSet(curEmail))
-				if active != "" {
+				if owner := ownerProfile(active); active != "" && owner != "" {
+					errf("repo is owned by %s (profile %q), but %q is active", gitutil.RemoteOwner(), owner, active)
+					info("  fix: ghswitch %s   ·   make it automatic: echo 'profile: %s' > .ghswitch.yml", owner, owner)
+					issues++
+				} else if active != "" {
 					if p, found := config.Get(active); found && p.Email != "" && curEmail != p.Email {
 						warn("user.email mismatch: repo=%q vs profile=%q", curEmail, p.Email)
 						info("  fix: ghswitch local   (or 'ghswitch auto' to detect)")
