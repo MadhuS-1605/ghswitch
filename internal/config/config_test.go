@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // TestMultiHostRoundTrip verifies that a profile with an extra [name@host]
 // section survives a Save/Load cycle, and that ForHost picks the right
@@ -48,5 +52,20 @@ func TestMultiHostRoundTrip(t *testing.T) {
 	unknown := got.ForHost("")
 	if unknown.SSHKey != "~/.ssh/id_work" {
 		t.Fatalf("ForHost(\"\") should fall back to primary, got %q", unknown.SSHKey)
+	}
+}
+
+func TestSigningKey(t *testing.T) {
+	dir := t.TempDir()
+	key := filepath.Join(dir, "id_ed25519")
+	if f, k := (Profile{GPGKey: "ABC", SSHKey: key}).SigningKey(); f != "openpgp" || k != "ABC" {
+		t.Fatalf("gpg_key should win, got %q %q", f, k)
+	}
+	if _, k := (Profile{SSHKey: key}).SigningKey(); k != "" {
+		t.Fatalf("missing .pub should disable signing, got %q", k)
+	}
+	_ = os.WriteFile(key+".pub", []byte("x"), 0o600)
+	if f, k := (Profile{SSHKey: key}).SigningKey(); f != "ssh" || k != key+".pub" {
+		t.Fatalf("want ssh %s.pub, got %q %q", key, f, k)
 	}
 }

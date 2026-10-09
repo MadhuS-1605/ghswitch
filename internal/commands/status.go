@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/MadhuS-1605/ghswitch/internal/config"
 	"github.com/MadhuS-1605/ghswitch/internal/gitutil"
@@ -16,55 +17,37 @@ func newStatusCmd() *cobra.Command {
 		Aliases: []string{"whoami"},
 		Short:   "Current git identity + gh-CLI auth",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sessionActive := os.Getenv("GHSWITCH_ACTIVE_PROFILE")
-			if sessionActive != "" {
-				section("Session identity (this shell only)")
-				fmt.Fprintf(os.Stderr, "  Profile      : %s\n", sessionActive)
-				fmt.Fprintf(os.Stderr, "  Name         : %s\n", os.Getenv("GIT_AUTHOR_NAME"))
-				fmt.Fprintf(os.Stderr, "  Email        : %s\n", os.Getenv("GIT_AUTHOR_EMAIL"))
+			// Effective values for this shell: `git var` and `git config`
+			// (no scope) already fold in session env and repo overrides.
+			profile, scope := os.Getenv("GHSWITCH_ACTIVE_PROFILE"), "this shell"
+			if profile == "" {
+				profile, scope = config.GetActiveGlobal(), "global"
 			}
+			if gitutil.InRepo() && gitutil.ConfigGet("--local", "user.email") != "" {
+				scope = "repo override"
+			}
+			section("%s (%s)", orNotSet(profile), scope)
 
-			section("Global git identity")
-			name := gitutil.ConfigGet("--global", "user.name")
-			email := gitutil.ConfigGet("--global", "user.email")
-			signKey := gitutil.ConfigGet("--global", "user.signingKey")
-			sshCmd := gitutil.ConfigGet("--global", "core.sshCommand")
-			printField := func(label, v string) {
-				if v == "" {
-					v = "(not set)"
-				}
-				fmt.Fprintf(os.Stderr, "  %-9s: %s\n", label, v)
+			ident, _ := gitutil.Run("var", "GIT_AUTHOR_IDENT")
+			if i := strings.LastIndex(ident, ">"); i >= 0 {
+				ident = ident[:i+1]
 			}
-			printField("Name", name)
-			printField("Email", email)
-			printField("GPG Key", signKey)
-			printField("SSH Cmd", sshCmd)
-			if active := config.GetActiveGlobal(); active != "" {
-				fmt.Fprintf(os.Stderr, "  ghswitch : %s (global fallback active)\n", active)
+			ssh := os.Getenv("GIT_SSH_COMMAND")
+			if ssh == "" {
+				ssh = gitutil.ConfigGet("", "core.sshCommand")
 			}
-
-			if gitutil.InRepo() {
-				lname := gitutil.ConfigGet("--local", "user.name")
-				lemail := gitutil.ConfigGet("--local", "user.email")
-				lssh := gitutil.ConfigGet("--local", "core.sshCommand")
-				if lname != "" || lemail != "" || lssh != "" {
-					section("Local git identity (repo override)")
-					if lname != "" {
-						fmt.Fprintf(os.Stderr, "  Name     : %s\n", lname)
-					}
-					if lemail != "" {
-						fmt.Fprintf(os.Stderr, "  Email    : %s\n", lemail)
-					}
-					if lssh != "" {
-						fmt.Fprintf(os.Stderr, "  SSH Cmd  : %s\n", lssh)
-					}
-				}
+			signing := gitutil.ConfigGet("", "user.signingKey")
+			if signing != "" && gitutil.ConfigGet("", "commit.gpgSign") != "true" {
+				signing += " (commit.gpgSign off)"
 			}
-
+			field := func(label, v string) { fmt.Fprintf(os.Stderr, "  %-9s%s\n", label, orNotSet(v)) }
+			field("Identity", ident)
+			field("SSH", ssh)
+			field("Signing", signing)
 			if hasCmd("gh") {
-				section("gh CLI status")
-				out, _ := exec.Command("gh", "auth", "status").CombinedOutput()
-				fmt.Fprintln(os.Stderr, string(out))
+				out, _ := exec.Command("gh", "auth", "status", "--active", "--json", "hosts",
+					"--jq", `.hosts[][] | .login + " @ " + .host + (if .state == "success" then "" else " (" + .state + ")" end)`).Output()
+				field("gh", strings.TrimSpace(string(out)))
 			}
 			return nil
 		},

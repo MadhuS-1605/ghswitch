@@ -21,6 +21,12 @@ var Keys = []string{
 	"GIT_COMMITTER_NAME",
 	"GIT_COMMITTER_EMAIL",
 	"GIT_SSH_COMMAND",
+	"GIT_CONFIG_COUNT",
+	"GIT_CONFIG_KEY_0",
+	"GIT_CONFIG_VALUE_0",
+	"GIT_CONFIG_KEY_1",
+	"GIT_CONFIG_VALUE_1",
+	"GH_TOKEN",
 	"GHSWITCH_ACTIVE_PROFILE",
 	"GHSWITCH_EXPIRES",
 }
@@ -45,16 +51,27 @@ func EnvFor(p config.Profile) map[string]string {
 		expanded := config.ExpandSSHKey(p.SSHKey)
 		env["GIT_SSH_COMMAND"] = fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes", expanded)
 	}
+	// Signing key has no dedicated env var; GIT_CONFIG_COUNT/KEY_n/VALUE_n
+	// (git ≥ 2.31) injects config for this shell only.
+	if format, key := p.SigningKey(); key != "" {
+		env["GIT_CONFIG_COUNT"] = "2"
+		env["GIT_CONFIG_KEY_0"] = "user.signingKey"
+		env["GIT_CONFIG_VALUE_0"] = key
+		env["GIT_CONFIG_KEY_1"] = "gpg.format"
+		env["GIT_CONFIG_VALUE_1"] = format
+	}
 	return env
 }
 
 // WriteExports writes POSIX `export KEY='VALUE'` lines, one per key in
-// Keys order (only keys present in env are emitted). Values are single-quote
+// Keys order; keys absent from env are unset so nothing leaks over from the
+// previously active profile. Values are single-quote
 // escaped since GitHub tokens/names may contain shell-special characters.
 func WriteExports(w io.Writer, env map[string]string) {
 	for _, k := range Keys {
 		v, ok := env[k]
 		if !ok {
+			fmt.Fprintf(w, "unset %s\n", k)
 			continue
 		}
 		fmt.Fprintf(w, "export %s=%s\n", k, shQuote(v))

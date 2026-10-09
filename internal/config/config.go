@@ -20,6 +20,7 @@ type Profile struct {
 	GPGKey  string
 	GHToken string
 	GHHost  string
+	GHUser  string     // GitHub login for `gh auth switch`; defaults to GitName
 	Hosts   []HostCred // additional hosts for this profile (multi-host), from [name@host] sections
 }
 
@@ -61,6 +62,30 @@ func (p Profile) ForHost(host string) Profile {
 	return p
 }
 
+// Login is the GitHub account name gh knows this profile by.
+func (p Profile) Login() string {
+	if p.GHUser != "" {
+		return p.GHUser
+	}
+	return p.GitName
+}
+
+// SigningKey picks how this profile signs commits: an explicit gpg_key
+// (openpgp), else the SSH key's .pub (ssh signing), else nothing — so a
+// switch never leaves the previous profile's key signing your commits.
+func (p Profile) SigningKey() (format, key string) {
+	if p.GPGKey != "" {
+		return "openpgp", p.GPGKey
+	}
+	if p.SSHKey != "" {
+		pub := ExpandSSHKey(p.SSHKey) + ".pub"
+		if _, err := os.Stat(pub); err == nil {
+			return "ssh", pub
+		}
+	}
+	return "", ""
+}
+
 func Dir() string {
 	if d := os.Getenv("GHSWITCH_CONFIG_DIR"); d != "" {
 		return d
@@ -99,7 +124,7 @@ func Load() ([]Profile, error) {
 	defer f.Close()
 
 	var profiles []Profile
-	var cur *Profile     // current [name] section
+	var cur *Profile      // current [name] section
 	var curHost *HostCred // current [name@host] sub-section, if any
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -157,6 +182,8 @@ func Load() ([]Profile, error) {
 			cur.GHToken = val
 		case "gh_host":
 			cur.GHHost = val
+		case "gh_user":
+			cur.GHUser = val
 		}
 	}
 	return profiles, sc.Err()
@@ -196,6 +223,9 @@ func Save(profiles []Profile) error {
 		}
 		if p.GHToken != "" {
 			fmt.Fprintf(&b, "gh_token=%s\n", p.GHToken)
+		}
+		if p.GHUser != "" {
+			fmt.Fprintf(&b, "gh_user=%s\n", p.GHUser)
 		}
 		host := p.GHHost
 		if host == "" {
